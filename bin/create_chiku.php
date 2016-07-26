@@ -1,5 +1,5 @@
 <?php
-set_include_path('/Volumes/HDUS-SS/daigaku_henkan16/util/Classes');
+set_include_path(__DIR__ . '/../util/Classes');
 include_once('PHPExcel.php');
 ini_set('display_errors', 1);
 date_default_timezone_set('Asia/Tokyo');
@@ -39,7 +39,7 @@ $host = "ono";
 $port = "3306";
 $user = "tap";
 
-$dsn = sprintf("mysql:host=%s;port=%s;dbname=16uadmin", $host, $port);
+$dsn = sprintf("mysql:host=%s;port=%s;dbname=17uadmin", $host, $port);
 $db = new PDO($dsn, $user, $password);
 $db->setAttribute(PDO::ATTR_ERRMODE, PDO::ERRMODE_EXCEPTION);
 $db->setAttribute(PDO::ATTR_DEFAULT_FETCH_MODE, PDO::FETCH_ASSOC);
