@@ -105,10 +105,12 @@ class createLastYearSettings{
             }
         }
         $sth->closeCursor();
+
+        $this->exists16 = array_filter($this->exists16, 'not_is_demo');
+        $this->exists17 = array_filter($this->exists17, 'not_is_demo');
+
         print_r($this->exists16);
         print_r($this->exists17);
-
-        exit;
     }
 
     private function getUsedDatabases()
@@ -141,11 +143,14 @@ class createLastYearSettings{
                 while ($str = $sth_ken->fetch()) {
                     $ken[] = $str['code_ken'];
                 }
+                sort($ken,SORT_NUMERIC);
                 $this->databases[$key]['ken'] = $ken;
             } else {
                 unset($this->databases[$key]);
             }
         }
+        print_r($this->databases);
+        exit;
     }
 
     private function getZipData()
@@ -265,8 +270,8 @@ function add_ken($files, $db, $clientdb, $clname, &$lines)
     );
 
     // 書き出しファイル
-    $output_file = sprintf("yubin_data_%s.txt", $clname);
-    $fout = fopen($output_file, "w");
+//    $output_file = sprintf("yubin_data_%s.txt", $clname);
+//    $fout = fopen($output_file, "w");
 
     $naiyo = array();
     $naiyo_koko = array();
@@ -374,7 +379,7 @@ function add_ken($files, $db, $clientdb, $clname, &$lines)
         $gyou = $gyou . "\t地名" . $i;
     }
     $gyou .= "\n";
-    fwrite($fout, $gyou);
+//    fwrite($fout, $gyou);
 
     $lines[] = explode("\t", trim($gyou));    // エクセル書き出しのために保存
 
@@ -387,7 +392,7 @@ function add_ken($files, $db, $clientdb, $clname, &$lines)
         $chou = implode("\t", $str['chou']);
         $gyou = sprintf("%s\t%s\t%s\t%s\t%s\t%s\n", $key, $ken, $chikucd, $chikuname, $jichi, $chou);
 
-        fwrite($fout, $gyou);
+//        fwrite($fout, $gyou);
 
         $lines[] = explode("\t", trim($gyou)); // エクセル書き出しのために保存
     }
@@ -404,15 +409,15 @@ function add_ken($files, $db, $clientdb, $clname, &$lines)
             $str['chou']
         );
 
-        fwrite($fout, $gyou);
+//        fwrite($fout, $gyou);
 
         $lines[] = explode("\t", trim($gyou)); // エクセル書き出しのために保存
     }
 
     // ファイルの文字コード変換 utf-8からsjisに
-    $file_contents = file_get_contents($output_file);
-    $file_contents = mb_convert_encoding($file_contents, 'SJIS-win', 'utf-8');
-    file_put_contents($output_file, $file_contents);
+//    $file_contents = file_get_contents($output_file);
+//    $file_contents = mb_convert_encoding($file_contents, 'SJIS-win', 'utf-8');
+//    file_put_contents($output_file, $file_contents);
 }
 
 /**
@@ -425,10 +430,10 @@ function createExcel($file_excel, $lines)
 {
 
     // 基になるファイルを読み込む
-    $objPHPExcel = PHPExcel_IOFactory::load('org/original_data.xlsx');
+    $objPHPExcel = PHPExcel_IOFactory::load('org/original_data_for_settings.xlsx');
 
     // シートの選択
-    $objPHPExcel->setActiveSheetIndex(3);
+    $objPHPExcel->setActiveSheetIndex(0);
     $objSheet = $objPHPExcel->getActiveSheet();
 
     // 見出し行を固定
@@ -456,4 +461,11 @@ function createExcel($file_excel, $lines)
     unset($objWriter);
     unset($objSheet);
     unset($objPHPExcel);
+}
+
+function not_is_demo($val){
+    if (preg_match('/(demo|test)/',$val)){
+        return false;
+    }
+    return true;
 }
