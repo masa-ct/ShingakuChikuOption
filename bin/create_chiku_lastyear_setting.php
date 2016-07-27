@@ -87,7 +87,11 @@ class createLastYearSettings{
 
         $this->getUsedDatabases();
 
-        $this->getZipData();
+        if (false===$this->getZipData()){
+            echo '郵便番号データの取得に失敗したので、作業を中止します。'.PHP_EOL;
+            exit;
+        }
+        exit;
 
         $this->createExcelFiles();
     }
@@ -123,7 +127,6 @@ class createLastYearSettings{
                 $this->databases[] = array('clc' => $str[0], 'nickname' => $str[1], 'clname' => $str[2]);
             }
         }
-        print_r($this->databases);
 
         // 上で抽出したデータベースについて、地区オプションを使用しているものに絞り込む
         $sth = $this->db->prepare("select value from set_kais where class='ks' and item='is_chiku'");
@@ -149,16 +152,15 @@ class createLastYearSettings{
                 unset($this->databases[$key]);
             }
         }
-        print_r($this->databases);
-        exit;
+
     }
 
+    /**
+     * 郵便番号データのダウンロード
+     * @return bool
+     */
     private function getZipData()
     {
-        /**
-         * 郵便番号データの取り込みはスキップ
-         */
-// 郵便番号データのダウンロード
         foreach ($this->files as $key => $file) {
             $folder_path = __DIR__ . '/../data/';
             $file_path = $folder_path . $file;
@@ -183,13 +185,15 @@ class createLastYearSettings{
                     $zip->close();
                 }
             }
-//    $cmd = sprintf("lha e %s", $file_path);
-//    exec($cmd);
 
             unlink($file_path);
-            $this->files[$key] = $csv_file_path;
+            if (is_file($csv_file_path)){
+                $this->files[$key] = $csv_file_path;
+            } else {
+                return false;
+            }
         }
-
+        return true;
     }
 
     private function createExcelFiles()
