@@ -1,6 +1,6 @@
 <?php
 ini_set('display_errors', 1);
-set_include_path('/Volumes/HDUS-SS/daigaku_henkan16/util/Classes');
+set_include_path(__DIR__ . '/../util/Classes');
 include_once('PHPExcel.php');
 date_default_timezone_set('Asia/Tokyo');
 error_reporting(E_ALL);
@@ -26,7 +26,7 @@ if (empty($options['p'])) {
     exit;
 }
 
-$nen = '16';
+$nen = '17';
 
 $files = array(
     1 => '01hokkai.zip',
@@ -82,9 +82,9 @@ $host = "ono";
 $port = "3306";
 $user = "tap";
 $pass = $options['p'];
-$clientdb = "u16qwg3ke";
+$clientdb = "u17qwg3ke";
 
-$dsn = sprintf("mysql:host=%s;port=%s;dbname=16uadmin", $host, $port);
+$dsn = sprintf("mysql:host=%s;port=%s;dbname=17uadmin", $host, $port);
 /** @var PDO $db */
 $db = new PDO($dsn, $user, $pass);
 $db->setAttribute(PDO::ATTR_ERRMODE, PDO::ERRMODE_EXCEPTION);
@@ -92,24 +92,24 @@ $db->setAttribute(PDO::ATTR_DEFAULT_FETCH_MODE, PDO::FETCH_ASSOC);
 
 // 存在するデータベース一覧
 $sth = $db->query('show databases');
-$exists15 = array();
 $exists16 = array();
+$exists17 = array();
 while ($str = $sth->fetch(PDO::FETCH_NUM)) {
-    if (preg_match('/^u15.{6}$/', $str[0])) {
-        $exists15[] = $str[0];
-    }
     if (preg_match('/^u16.{6}$/', $str[0])) {
         $exists16[] = $str[0];
     }
+    if (preg_match('/^u17.{6}$/', $str[0])) {
+        $exists17[] = $str[0];
+    }
 }
 $sth->closeCursor();
-print_r($exists15);
 print_r($exists16);
+print_r($exists17);
 
 $sth = $db->query("select clc,nickname,clname from client where open = 1");
 $databases = array();
 while ($str = $sth->fetch(PDO::FETCH_NUM)) {
-    if (in_array(sprintf('u16%s', $str[0]), $exists16)) {
+    if (in_array(sprintf('u17%s', $str[0]), $exists17)) {
         $databases[] = array('clc' => $str[0], 'nickname' => $str[1], 'clname' => $str[2]);
     }
 }
