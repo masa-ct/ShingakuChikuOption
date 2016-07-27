@@ -201,6 +201,8 @@ class createLastYearSettings
 
         // クライアントごとのファイルを作成する
         foreach ($this->databases as $database) {
+            echo sprintf('[%s] %s作成開始' . PHP_EOL, date('Y-m-d H:i:s'), $database['clname']);
+
             sort($database['ken']);
             $use = array();
             foreach ($database['ken'] as $ken) {
@@ -215,11 +217,9 @@ class createLastYearSettings
             $filename = $store_dir . sprintf('/【地区オプション】%s昨年度設定一覧.xlsx', $database['clname']);
             createExcel($filename, $lines);
 
-            exit;
+            echo sprintf('[%s] %s作成終了' . PHP_EOL, date('Y-m-d H:i:s'), $database['clname']);
         }
-
     }
-
 }
 
 // arg解析
