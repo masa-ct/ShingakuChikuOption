@@ -5,7 +5,8 @@ include_once('PHPExcel.php');
 date_default_timezone_set('Asia/Tokyo');
 error_reporting(E_ALL);
 
-class createLastYearSettings{
+class createLastYearSettings
+{
 
 
     private $nen;
@@ -69,6 +70,11 @@ class createLastYearSettings{
             47 => '47okinaw.zip'
         );
 
+        if (false === $this->getZipData()) {
+            echo '郵便番号データの取得に失敗したので、作業を中止します。' . PHP_EOL;
+            exit;
+        }
+
         $host = "ono";
         $port = "3306";
         $user = "tap";
@@ -86,12 +92,6 @@ class createLastYearSettings{
         $this->getDatabases();
 
         $this->getUsedDatabases();
-
-        if (false===$this->getZipData()){
-            echo '郵便番号データの取得に失敗したので、作業を中止します。'.PHP_EOL;
-            exit;
-        }
-        exit;
 
         $this->createExcelFiles();
     }
@@ -142,11 +142,13 @@ class createLastYearSettings{
             if ($is_chiku == true) {
                 // 使用している郵便番号から都道府県コードを取得
                 $ken = array();
-                $sth_ken = $this->db->query('select code_ken from common_u.yubin inner join chiku using (yubincd) group by code_ken');
+                $sth_ken = $this->db->query(
+                    'select code_ken from common_u.yubin inner join chiku using (yubincd) group by code_ken'
+                );
                 while ($str = $sth_ken->fetch()) {
                     $ken[] = $str['code_ken'];
                 }
-                sort($ken,SORT_NUMERIC);
+                sort($ken, SORT_NUMERIC);
                 $this->databases[$key]['ken'] = $ken;
             } else {
                 unset($this->databases[$key]);
@@ -187,7 +189,7 @@ class createLastYearSettings{
             }
 
             unlink($file_path);
-            if (is_file($csv_file_path)){
+            if (is_file($csv_file_path)) {
                 $this->files[$key] = $csv_file_path;
             } else {
                 return false;
@@ -198,8 +200,9 @@ class createLastYearSettings{
 
     private function createExcelFiles()
     {
+        $store_dir = realpath(__DIR__ . '/../data/');
 
-// クライアントごとのファイルを作成する
+        // クライアントごとのファイルを作成する
         foreach ($this->databases as $database) {
             sort($database['ken']);
             $use = array();
@@ -212,14 +215,16 @@ class createLastYearSettings{
             add_ken($use, $this->db, sprintf('u%s%s', $this->nen, $database['clc']), $database['clname'], $lines);
 
             // エクセルの作成
-            $filename = sprintf('【地区オプション】%s昨年度設定一覧.xlsx', $database['clname']);
+            $filename = $store_dir . sprintf('【地区オプション】%s昨年度設定一覧.xlsx', $database['clname']);
             createExcel($filename, $lines);
 
+            exit;
         }
 
     }
 
 }
+
 // arg解析
 $options = getopt('p:');
 
@@ -241,7 +246,7 @@ if (empty($options['p'])) {
     exit;
 }
 
-$create_last_year_settings=new createLastYearSettings($options);
+$create_last_year_settings = new createLastYearSettings($options);
 
 //// csvファイルの削除
 //foreach ($csv_files as $csv) {
@@ -467,8 +472,9 @@ function createExcel($file_excel, $lines)
     unset($objPHPExcel);
 }
 
-function not_is_demo($val){
-    if (preg_match('/(demo|test)/',$val)){
+function not_is_demo($val)
+{
+    if (preg_match('/(demo|test)/', $val)) {
         return false;
     }
     return true;
