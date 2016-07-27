@@ -112,9 +112,6 @@ class createLastYearSettings
 
         $this->exists16 = array_filter($this->exists16, 'not_is_demo');
         $this->exists17 = array_filter($this->exists17, 'not_is_demo');
-
-        print_r($this->exists16);
-        print_r($this->exists17);
     }
 
     private function getUsedDatabases()
@@ -215,7 +212,7 @@ class createLastYearSettings
             add_ken($use, $this->db, sprintf('u%s%s', $this->nen, $database['clc']), $database['clname'], $lines);
 
             // エクセルの作成
-            $filename = $store_dir . sprintf('【地区オプション】%s昨年度設定一覧.xlsx', $database['clname']);
+            $filename = $store_dir . sprintf('/【地区オプション】%s昨年度設定一覧.xlsx', $database['clname']);
             createExcel($filename, $lines);
 
             exit;
