@@ -5,6 +5,212 @@ include_once('PHPExcel.php');
 date_default_timezone_set('Asia/Tokyo');
 error_reporting(E_ALL);
 
+class createLastYearSettings{
+
+
+    private $nen;
+    private $files;
+    private $db;
+    private $exists16;
+    private $exists17;
+    private $databases;
+
+    public function __construct($options)
+    {
+        $this->nen = '17';
+
+        $this->files = array(
+            1 => '01hokkai.zip',
+            2 => '02aomori.zip',
+            3 => '03iwate.zip',
+            4 => '04miyagi.zip',
+            5 => '05akita.zip',
+            6 => '06yamaga.zip',
+            7 => '07fukush.zip',
+            8 => '08ibarak.zip',
+            9 => '09tochig.zip',
+            10 => '10gumma.zip',
+            11 => '11saitam.zip',
+            12 => '12chiba.zip',
+            13 => '13tokyo.zip',
+            14 => '14kanaga.zip',
+            15 => '15niigat.zip',
+            16 => '16toyama.zip',
+            17 => '17ishika.zip',
+            18 => '18fukui.zip',
+            19 => '19yamana.zip',
+            20 => '20nagano.zip',
+            21 => '21gifu.zip',
+            22 => '22shizuo.zip',
+            23 => '23aichi.zip',
+            24 => '24mie.zip',
+            25 => '25shiga.zip',
+            26 => '26kyouto.zip',
+            27 => '27osaka.zip',
+            28 => '28hyogo.zip',
+            29 => '29nara.zip',
+            30 => '30wakaya.zip',
+            31 => '31tottor.zip',
+            32 => '32shiman.zip',
+            33 => '33okayam.zip',
+            34 => '34hirosh.zip',
+            35 => '35yamagu.zip',
+            36 => '36tokush.zip',
+            37 => '37kagawa.zip',
+            38 => '38ehime.zip',
+            39 => '39kochi.zip',
+            40 => '40fukuok.zip',
+            41 => '41saga.zip',
+            42 => '42nagasa.zip',
+            43 => '43kumamo.zip',
+            44 => '44oita.zip',
+            45 => '45miyaza.zip',
+            46 => '46kagosh.zip',
+            47 => '47okinaw.zip'
+        );
+
+        $host = "ono";
+        $port = "3306";
+        $user = "tap";
+        $pass = $options['p'];
+
+        $dsn = sprintf("mysql:host=%s;port=%s;dbname=17uadmin", $host, $port);
+        /** @var PDO $db */
+        $this->db = new PDO($dsn, $user, $pass);
+        $this->db->setAttribute(PDO::ATTR_ERRMODE, PDO::ERRMODE_EXCEPTION);
+        $this->db->setAttribute(PDO::ATTR_DEFAULT_FETCH_MODE, PDO::FETCH_ASSOC);
+
+        $this->exists16 = array();
+        $this->exists17 = array();
+
+        $this->getDatabases();
+
+        $this->getUsedDatabases();
+
+        $this->getZipData();
+
+        $this->createExcelFiles();
+    }
+
+    private function getDatabases()
+    {
+        // 存在するデータベース一覧
+        $sth = $this->db->query('show databases');
+        while ($str = $sth->fetch(PDO::FETCH_NUM)) {
+            if (preg_match('/^u16.{6}$/', $str[0])) {
+                $this->exists16[] = $str[0];
+            }
+            if (preg_match('/^u17.{6}$/', $str[0])) {
+                $this->exists17[] = $str[0];
+            }
+        }
+        $sth->closeCursor();
+        print_r($this->exists16);
+        print_r($this->exists17);
+
+        exit;
+    }
+
+    private function getUsedDatabases()
+    {
+        // 17版のデータベースでクライアントテーブルでオープンになっているものを抽出
+        $sth = $this->db->query("select clc,nickname,clname from 17uadmin.client where open = 1");
+        $this->databases = array();
+        while ($str = $sth->fetch(PDO::FETCH_NUM)) {
+            if (in_array(sprintf('u17%s', $str[0]), $this->exists17)) {
+                $this->databases[] = array('clc' => $str[0], 'nickname' => $str[1], 'clname' => $str[2]);
+            }
+        }
+        print_r($this->databases);
+
+        // 上で抽出したデータベースについて、地区オプションを使用しているものに絞り込む
+        $sth = $this->db->prepare("select value from set_kais where class='ks' and item='is_chiku'");
+        foreach ($this->databases as $key => $database) {
+            $is_chiku = false;
+            $this->db->query(sprintf('use u%s%s', $this->nen, $database['clc']));
+            $sth->execute(array());
+            if ($str = $sth->fetch()) {
+                if ($str['value'] == '1') {
+                    $is_chiku = true;
+                }
+            }
+            if ($is_chiku == true) {
+                // 使用している郵便番号から都道府県コードを取得
+                $ken = array();
+                $sth_ken = $this->db->query('select code_ken from common_u.yubin inner join chiku using (yubincd) group by code_ken');
+                while ($str = $sth_ken->fetch()) {
+                    $ken[] = $str['code_ken'];
+                }
+                $this->databases[$key]['ken'] = $ken;
+            } else {
+                unset($this->databases[$key]);
+            }
+        }
+    }
+
+    private function getZipData()
+    {
+        /**
+         * 郵便番号データの取り込みはスキップ
+         */
+// 郵便番号データのダウンロード
+        foreach ($this->files as $key => $file) {
+            $folder_path = __DIR__ . '/../data/';
+            $file_path = $folder_path . $file;
+            $csv_file_path = $folder_path . strtoupper(str_replace("zip", "csv", $file));
+
+            // 現存するファイルを消す
+            if (is_file($file_path)) {
+                unlink($file_path);
+            }
+
+            exec(sprintf("wget -O %s http://www.post.japanpost.jp/zipcode/dl/oogaki/zip/%s", $file_path, $file));
+
+            // 既存のcsvファイルを削除
+            if (is_file($csv_file_path)) {
+                unlink($csv_file_path);
+            }
+
+            // 圧縮ファイルを解凍
+            $zip = new ZipArchive();
+            if ($zip->open($file_path)) {
+                if ($zip->extractTo($folder_path)) {
+                    $zip->close();
+                }
+            }
+//    $cmd = sprintf("lha e %s", $file_path);
+//    exec($cmd);
+
+            unlink($file_path);
+            $this->files[$key] = $csv_file_path;
+        }
+
+    }
+
+    private function createExcelFiles()
+    {
+
+// クライアントごとのファイルを作成する
+        foreach ($this->databases as $database) {
+            sort($database['ken']);
+            $use = array();
+            foreach ($database['ken'] as $ken) {
+                $use[$ken] = $this->files[$ken];
+            }
+
+            // テキストファイルの書き出し
+            $lines = array();
+            add_ken($use, $this->db, sprintf('u%s%s', $this->nen, $database['clc']), $database['clname'], $lines);
+
+            // エクセルの作成
+            $filename = sprintf('【地区オプション】%s昨年度設定一覧.xlsx', $database['clname']);
+            createExcel($filename, $lines);
+
+        }
+
+    }
+
+}
 // arg解析
 $options = getopt('p:');
 
@@ -26,171 +232,7 @@ if (empty($options['p'])) {
     exit;
 }
 
-$nen = '17';
-
-$files = array(
-    1 => '01hokkai.zip',
-    2 => '02aomori.zip',
-    3 => '03iwate.zip',
-    4 => '04miyagi.zip',
-    5 => '05akita.zip',
-    6 => '06yamaga.zip',
-    7 => '07fukush.zip',
-    8 => '08ibarak.zip',
-    9 => '09tochig.zip',
-    10 => '10gumma.zip',
-    11 => '11saitam.zip',
-    12 => '12chiba.zip',
-    13 => '13tokyo.zip',
-    14 => '14kanaga.zip',
-    15 => '15niigat.zip',
-    16 => '16toyama.zip',
-    17 => '17ishika.zip',
-    18 => '18fukui.zip',
-    19 => '19yamana.zip',
-    20 => '20nagano.zip',
-    21 => '21gifu.zip',
-    22 => '22shizuo.zip',
-    23 => '23aichi.zip',
-    24 => '24mie.zip',
-    25 => '25shiga.zip',
-    26 => '26kyouto.zip',
-    27 => '27osaka.zip',
-    28 => '28hyogo.zip',
-    29 => '29nara.zip',
-    30 => '30wakaya.zip',
-    31 => '31tottor.zip',
-    32 => '32shiman.zip',
-    33 => '33okayam.zip',
-    34 => '34hirosh.zip',
-    35 => '35yamagu.zip',
-    36 => '36tokush.zip',
-    37 => '37kagawa.zip',
-    38 => '38ehime.zip',
-    39 => '39kochi.zip',
-    40 => '40fukuok.zip',
-    41 => '41saga.zip',
-    42 => '42nagasa.zip',
-    43 => '43kumamo.zip',
-    44 => '44oita.zip',
-    45 => '45miyaza.zip',
-    46 => '46kagosh.zip',
-    47 => '47okinaw.zip'
-);
-
-$host = "ono";
-$port = "3306";
-$user = "tap";
-$pass = $options['p'];
-$clientdb = "u17qwg3ke";
-
-$dsn = sprintf("mysql:host=%s;port=%s;dbname=17uadmin", $host, $port);
-/** @var PDO $db */
-$db = new PDO($dsn, $user, $pass);
-$db->setAttribute(PDO::ATTR_ERRMODE, PDO::ERRMODE_EXCEPTION);
-$db->setAttribute(PDO::ATTR_DEFAULT_FETCH_MODE, PDO::FETCH_ASSOC);
-
-// 存在するデータベース一覧
-$sth = $db->query('show databases');
-$exists16 = array();
-$exists17 = array();
-while ($str = $sth->fetch(PDO::FETCH_NUM)) {
-    if (preg_match('/^u16.{6}$/', $str[0])) {
-        $exists16[] = $str[0];
-    }
-    if (preg_match('/^u17.{6}$/', $str[0])) {
-        $exists17[] = $str[0];
-    }
-}
-$sth->closeCursor();
-print_r($exists16);
-print_r($exists17);
-
-$sth = $db->query("select clc,nickname,clname from client where open = 1");
-$databases = array();
-while ($str = $sth->fetch(PDO::FETCH_NUM)) {
-    if (in_array(sprintf('u17%s', $str[0]), $exists17)) {
-        $databases[] = array('clc' => $str[0], 'nickname' => $str[1], 'clname' => $str[2]);
-    }
-}
-
-print_r($databases);
-
-$sth = $db->prepare("select value from set_kais where class='ks' and item='is_chiku'");
-foreach ($databases as $key => $database) {
-    $is_chiku = false;
-    $db->query(sprintf('use u%s%s', $nen, $database['clc']));
-    $sth->execute(array());
-    if ($str = $sth->fetch()) {
-        if ($str['value'] == '1') {
-            $is_chiku = true;
-        }
-    }
-    if ($is_chiku == true) {
-        // 使用している郵便番号から都道府県コードを取得
-        $ken = array();
-        $sth_ken = $db->query('select code_ken from common_u.yubin inner join chiku using (yubincd) group by code_ken');
-        while ($str = $sth_ken->fetch()) {
-            $ken[] = $str['code_ken'];
-        }
-        $databases[$key]['ken'] = $ken;
-    } else {
-        unset($databases[$key]);
-    }
-}
-
-/**
- * 郵便番号データの取り込みはスキップ
- */
-// 郵便番号データのダウンロード
-foreach ($files as $key => $file) {
-    $folder_path = __DIR__ . '/../data/';
-    $file_path = $folder_path . $file;
-    $csv_file_path = $folder_path . strtoupper(str_replace("zip", "csv", $file));
-
-    // 現存するファイルを消す
-    if (is_file($file_path)) {
-        unlink($file_path);
-    }
-
-    exec(sprintf("wget -O %s http://www.post.japanpost.jp/zipcode/dl/oogaki/zip/%s", $file_path, $file));
-
-    // 既存のcsvファイルを削除
-    if (is_file($csv_file_path)) {
-        unlink($csv_file_path);
-    }
-
-    // 圧縮ファイルを解凍
-    $zip = new ZipArchive();
-    if ($zip->open($file_path)) {
-        if ($zip->extractTo($folder_path)) {
-            $zip->close();
-        }
-    }
-//    $cmd = sprintf("lha e %s", $file_path);
-//    exec($cmd);
-
-    unlink($file_path);
-    $files[$key] = $csv_file_path;
-}
-
-// クライアントごとのファイルを作成する
-foreach ($databases as $database) {
-    sort($database['ken']);
-    $use = array();
-    foreach ($database['ken'] as $ken) {
-        $use[$ken] = $files[$ken];
-    }
-
-    // テキストファイルの書き出し
-    $lines = array();
-    add_ken($use, $db, sprintf('u%s%s', $nen, $database['clc']), $database['clname'], $lines);
-
-    // エクセルの作成
-    $filename = sprintf('【地区オプション】%s昨年度設定一覧.xlsx', $database['clname']);
-    createExcel($filename, $lines);
-
-}
+$create_last_year_settings=new createLastYearSettings($options);
 
 //// csvファイルの削除
 //foreach ($csv_files as $csv) {
