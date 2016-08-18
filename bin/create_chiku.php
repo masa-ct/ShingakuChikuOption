@@ -12,12 +12,23 @@ class createChiku
      */
     private $db;
     private $lines;
+    /**
+     * @var string
+     */
     private $clientname;
 
     const C_HOST = 'ono';
     const C_PORT = "3306";
     const C_USER = "tap";
+    /**
+     * @var array
+     */
     private $prefectures;
+    private $folder_path;
+    /**
+     * @var array
+     */
+    private $pref_names;
 
     public function __construct()
     {
@@ -43,12 +54,11 @@ class createChiku
             echo $e->getMessage();
             exit;
         }
-        print_r($this->prefectures);
-        exit;
-
         // データ保存領域の初期化
         $this->lines = array();
 
+        // データ格納フォルダの指定
+        $this->folder_path = __DIR__ . '/../data/';
     }
 
     /**
@@ -211,6 +221,170 @@ class createChiku
         }
     }
 
+    /**
+     * 通常の郵便番号データの内容を書き出します
+     * @param $files
+     * @param $db
+     * @param $lines
+     */
+    public function addNormalData($files, $db, &$lines)
+    {
+        // 都道府県名の格納
+        $fuken = array();
+        /** @var PDO $db */
+        $sth = $db->query('select cd,name from common_u.fuken order by cd');
+        while ($str = $sth->fetch()) {
+            $fuken[$str['cd']] = $str['name'];
+        }
+
+        // 県コードを指定して高校マスタを読み込む
+        $sth = $db->prepare(
+            "select replace(yubin, '-', '') as yubin,fullname,jusho from koko
+	    where ken=? and jusho<> '' and fumei<> '3' order by yubin"
+        );
+
+        $naiyo = array();
+        $naiyo_koko = array();
+
+        // 連結スイッチ
+        $join = false;
+
+        $max = 0;
+
+        foreach ($files as $file) {
+            // 読み込みファイル
+            $fp = fopen($file, "r");
+            $chou = '';
+
+            while ($str = fgets($fp)) {
+                $str = mb_convert_encoding($str, "utf-8", "sjis-win");
+                $str = str_replace('"', '', $str);
+                $data = explode(",", $str);
+
+                // 郵便番号をキーに
+                $key = sprintf("%07d", $data[2]);
+                if (!array_key_exists($key, $naiyo)) {
+                    $naiyo[$key]['ken'] = array();
+                    $naiyo[$key]['jichi'] = array();
+                    $naiyo[$key]['chou'] = array();
+                }
+
+                // 各配列に値を追加していく
+                if (!in_array($data[6], $naiyo[$key]['ken'])) {
+                    $naiyo[$key]['ken'][] = $data[6];
+                }
+
+                if (!in_array($data[7], $naiyo[$key]['jichi'])) {
+                    $naiyo[$key]['jichi'][] = $data[7];
+                }
+
+                // 町域名の中に全角の小かっこが入っていたら文字の連結をするスイッチを入れる
+                if (strpos($data[8], "（") !== false) {
+                    $join = true;
+                    $chou = "";
+                }
+
+                if ($join === true) {
+                    $chou .= $data[8];
+                    if (strpos($chou, "）") !== false) {
+                        $join = false;
+                        $naiyo[$key]['chou'][] = $chou;
+                        $chou = "";
+                    }
+                } else {
+                    if (!in_array($data[8], $naiyo[$key]['chou'])) {
+                        $naiyo[$key]['chou'][] = $data[8];
+                    }
+                }
+
+                $max = (count($naiyo[$key]['chou']) > $max) ? count($naiyo[$key]['chou']) : $max;
+            }
+
+            fclose($fp);
+
+            // ファイル名から県コードの取得
+            if (preg_match('/\/(\d{2})[^\/]+.csv$/', $file, $regs)) {
+                $kencd = $regs[1];
+                /** @var PDOstatement $sth */
+                $sth->execute(array($kencd));
+                while ($str = $sth->fetch()) {
+                    if (!array_key_exists($str['yubin'], $naiyo)) {
+                        $naiyo_koko[$str['yubin']]['fuken'] = $fuken[(int)$kencd];
+                        $naiyo_koko[$str['yubin']]['city'] = $str['fullname'];
+                        $naiyo_koko[$str['yubin']]['chou'] = $str['jusho'];
+                    }
+                }
+            }
+
+        }
+
+        // 書き出し
+        // 最初に項目列を書き出す
+        $gyou = "郵便番号\t都道府県\t市区町村";
+        for ($i = 1; $i <= $max; $i++) {
+            $gyou = $gyou . "\t地名" . $i;
+        }
+        $gyou .= "\n";
+
+        $lines[] = explode("\t", trim($gyou));    // エクセル書き出しのために保存
+
+        // ここから内容の書き出し
+        foreach ($naiyo as $key => $str) {
+            $ken = implode("・", $str['ken']);
+            $jichi = implode("・", $str['jichi']);
+            $chou = implode("\t", $str['chou']);
+            $gyou = sprintf("%s\t%s\t%s\t%s\n", $key, $ken, $jichi, $chou);
+
+            $lines[] = explode("\t", trim($gyou)); // エクセル書き出しのために保存
+        }
+
+        // ここから独自郵便番号の高校の書き出し
+        foreach ($naiyo_koko as $key => $str) {
+            $gyou = sprintf("%s\t%s\t%s\t%s\n", $key, $str['fuken'], $str['city'], $str['chou']);
+
+            $lines[] = explode("\t", trim($gyou)); // エクセル書き出しのために保存
+        }
+    }
+
+    /**
+     * 郵便番号データのダウンロード
+     * @return bool
+     */
+    public function getZipData()
+    {
+        foreach ($this->prefectures as $key => $file) {
+            $file = $this->files[$key];
+            $file_path = $this->folder_path . $file;
+            $csv_file_path = $this->folder_path . strtoupper(str_replace("zip", "csv", $file));
+
+            // 現存するファイルを消す
+            if (is_file($file_path)) {
+                unlink($file_path);
+            }
+            if (is_file($csv_file_path)) {
+                unlink($csv_file_path);
+            }
+
+            exec(sprintf("wget -O %s http://www.post.japanpost.jp/zipcode/dl/oogaki/zip/%s", $file_path, $file));
+
+            // 圧縮ファイルを解凍
+            $zip = new ZipArchive();
+            if ($zip->open($file_path)) {
+                if ($zip->extractTo($this->folder_path)) {
+                    $zip->close();
+                }
+            }
+
+            unlink($file_path);
+            if (is_file($csv_file_path)) {
+                $this->prefectures[$key] = realpath($csv_file_path);
+            } else {
+                return false;
+            }
+        }
+        return true;
+    }
+
     function getZip()
     {
         // このフォルダ内の郵便番号データ(zip)を取得
@@ -327,39 +501,52 @@ class createChiku
      */
     public function setPrefectures($prefectures)
     {
-        $sql = <<<EOM
-select * from common_u.fuken where shortname = ?
-EOM;
         $this->db->query('use common_u');
-        /*
-         * 都道府県名からコードを取得する
-         */
-        $sth = $this->db->prepare($sql);
+
+        $sql_get_cd = <<<EOM
+select cd from fuken where shortname = ?
+EOM;
+        $sql_get_name = <<<EOM
+select `name` from fuken where cd = ?
+EOM;
+
+        // 都道府県名からコードを取得する
+        $sth_get_cd = $this->db->prepare($sql_get_cd);
+
+        // コードから都道府県名を取得する
+        $sth_get_name = $this->db->prepare($sql_get_name);
 
         /* パラメータの値をカンマで分割し、数値の場合は都道府県コードとしての妥当性を確認した
          * 上で配列に格納し、そうでない文字列の場合はコード化して配列に格納する。
          */
         $this->prefectures = [];
+        $this->pref_names = [];
+
+        // パラメータで与えられた値をカンマで分割
         $values = explode(',', $prefectures);
 
         foreach ($values as $value) {
+            $num = 0;     // 初期化
             if (is_numeric($value)) {
                 // 数値の場合
                 $num = (int)$value;
-                if ($num > 1 && $num < 48) {
-                    $this->prefectures[$num] = '';
-                }
             } else {
                 // 文字列の場合
-                $sth->execute([$value]);
-                if ($str = $sth->fetch(PDO::FETCH_ASSOC)) {
-                    $this->prefectures[$str['cd']] = '';
+                $sth_get_cd->execute([$value]);
+                if ($str = $sth_get_cd->fetch(PDO::FETCH_ASSOC)) {
+                    $num = (int)$str['cd'];
                 }
+            }
+            // 取得したコードのバリデーションも兼ねて都道府県名を取得
+            $sth_get_name->execute([$num]);
+            if ($str = $sth_get_name->fetch(PDO::FETCH_ASSOC)) {
+                $this->prefectures[$num] = '';
+                $this->pref_names[$num] = $str['name'];
             }
         }
 
         if (count($this->prefectures) == 0) {
-            throw new Exception('都道府県に該当なし'.PHP_EOL);
+            throw new Exception('都道府県に該当なし' . PHP_EOL);
         }
     }
 
@@ -416,7 +603,7 @@ EOM;
 }
 
 $create_chiku = new createChiku();
-
+$create_chiku->getZipData();        // 郵便番号データをダウンロードする
 
 
 
