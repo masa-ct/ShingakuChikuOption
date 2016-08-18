@@ -11,7 +11,7 @@ class createChiku
      * @var PDO $db
      */
     private $db;
-    private $lines;
+    public $lines;
     /**
      * @var string
      */
@@ -29,6 +29,7 @@ class createChiku
      * @var array
      */
     private $pref_names;
+    private $excel_filename;
 
     public function __construct()
     {
@@ -59,13 +60,16 @@ class createChiku
 
         // データ格納フォルダの指定
         $this->folder_path = __DIR__ . '/../data/';
+
+        // エクセルファイルのパス編集
+        $this->excel_filename = __DIR__ . '/../data/【地区オプション】' . $this->clientname . '郵便番号一覧.xlsx';
     }
 
     /**
-     * @param $file_excel
-     * @param $lines
+     * @internal param $file_excel
+     * @internal param $lines
      */
-    function createExcel($file_excel, $lines)
+    public function createExcel()
     {
 
         // 基になるファイルを読み込む
@@ -79,7 +83,7 @@ class createChiku
         $objSheet->freezePane('A2');
 
         // データを流し込んでいく
-        foreach ($lines as $gyou => $line) {
+        foreach ($this->lines as $gyou => $line) {
             foreach ($line as $retsu => $data) {
                 if ($retsu == 0) {
                     // A列の郵便番号は、文字列としてデータをセットする
@@ -96,7 +100,7 @@ class createChiku
         }
 
         $objWriter = PHPExcel_IOFactory::createWriter($objPHPExcel, 'Excel2007');
-        $objWriter->save($file_excel);
+        $objWriter->save($this->excel_filename);
         unset($objWriter);
         unset($objSheet);
         unset($objPHPExcel);
@@ -223,22 +227,16 @@ class createChiku
 
     /**
      * 通常の郵便番号データの内容を書き出します
-     * @param $files
-     * @param $db
-     * @param $lines
+     * @internal param $files
+     * @internal param $db
+     * @internal param $lines
      */
-    public function addNormalData($files, $db, &$lines)
+    public function addNormalData()
     {
-        // 都道府県名の格納
-        $fuken = array();
-        /** @var PDO $db */
-        $sth = $db->query('select cd,name from common_u.fuken order by cd');
-        while ($str = $sth->fetch()) {
-            $fuken[$str['cd']] = $str['name'];
-        }
+        $this->db->query('USE 17uadmin');
 
         // 県コードを指定して高校マスタを読み込む
-        $sth = $db->prepare(
+        $sth = $this->db->prepare(
             "select replace(yubin, '-', '') as yubin,fullname,jusho from koko
 	    where ken=? and jusho<> '' and fumei<> '3' order by yubin"
         );
@@ -251,7 +249,7 @@ class createChiku
 
         $max = 0;
 
-        foreach ($files as $file) {
+        foreach ($this->prefectures as $kencd => $file) {
             // 読み込みファイル
             $fp = fopen($file, "r");
             $chou = '';
@@ -302,17 +300,13 @@ class createChiku
 
             fclose($fp);
 
-            // ファイル名から県コードの取得
-            if (preg_match('/\/(\d{2})[^\/]+.csv$/', $file, $regs)) {
-                $kencd = $regs[1];
-                /** @var PDOstatement $sth */
-                $sth->execute(array($kencd));
-                while ($str = $sth->fetch()) {
-                    if (!array_key_exists($str['yubin'], $naiyo)) {
-                        $naiyo_koko[$str['yubin']]['fuken'] = $fuken[(int)$kencd];
-                        $naiyo_koko[$str['yubin']]['city'] = $str['fullname'];
-                        $naiyo_koko[$str['yubin']]['chou'] = $str['jusho'];
-                    }
+            /** @var PDOstatement $sth */
+            $sth->execute(array($kencd));
+            while ($str = $sth->fetch()) {
+                if (!array_key_exists($str['yubin'], $naiyo)) {
+                    $naiyo_koko[$str['yubin']]['fuken'] = $this->pref_names[(int)$kencd];
+                    $naiyo_koko[$str['yubin']]['city'] = $str['fullname'];
+                    $naiyo_koko[$str['yubin']]['chou'] = $str['jusho'];
                 }
             }
 
@@ -326,7 +320,7 @@ class createChiku
         }
         $gyou .= "\n";
 
-        $lines[] = explode("\t", trim($gyou));    // エクセル書き出しのために保存
+        $this->lines[] = explode("\t", trim($gyou));    // エクセル書き出しのために保存
 
         // ここから内容の書き出し
         foreach ($naiyo as $key => $str) {
@@ -335,14 +329,14 @@ class createChiku
             $chou = implode("\t", $str['chou']);
             $gyou = sprintf("%s\t%s\t%s\t%s\n", $key, $ken, $jichi, $chou);
 
-            $lines[] = explode("\t", trim($gyou)); // エクセル書き出しのために保存
+            $this->lines[] = explode("\t", trim($gyou)); // エクセル書き出しのために保存
         }
 
         // ここから独自郵便番号の高校の書き出し
         foreach ($naiyo_koko as $key => $str) {
             $gyou = sprintf("%s\t%s\t%s\t%s\n", $key, $str['fuken'], $str['city'], $str['chou']);
 
-            $lines[] = explode("\t", trim($gyou)); // エクセル書き出しのために保存
+            $this->lines[] = explode("\t", trim($gyou)); // エクセル書き出しのために保存
         }
     }
 
@@ -377,7 +371,7 @@ class createChiku
 
             unlink($file_path);
             if (is_file($csv_file_path)) {
-                $this->prefectures[$key] = realpath($csv_file_path);
+                $this->prefectures[$key] = $csv_file_path;
             } else {
                 return false;
             }
@@ -550,6 +544,16 @@ EOM;
         }
     }
 
+    /**
+     * 使用したCSVファイルを削除します
+     */
+    public function cleanUp()
+    {
+        foreach ($this->prefectures as $prefecture) {
+            unlink($prefecture);
+        }
+    }
+
     private $files = array(
         1 => '01hokkai.zip',
         2 => '02aomori.zip',
@@ -600,10 +604,26 @@ EOM;
         47 => '47okinaw.zip'
     );
 
+    /**
+     * 処理完了メッセージ
+     */
+    public function info()
+    {
+        echo sprintf('%sにファイル「%s」を作成しました。' . PHP_EOL, 'data', $this->excel_filename);
+        echo sprintf('対象都道府県は「%s」で、' . PHP_EOL, implode('、', $this->pref_names));
+        echo sprintf('レコード件数は、%s件でした。', number_format(count($this->lines)));
+
+    }
+
 }
 
 $create_chiku = new createChiku();
 $create_chiku->getZipData();        // 郵便番号データをダウンロードする
+$create_chiku->addNormalData();     // データを配列に格納する
+$create_chiku->createExcel();
+$create_chiku->cleanUp();
+$create_chiku->info();
+
 
 
 
