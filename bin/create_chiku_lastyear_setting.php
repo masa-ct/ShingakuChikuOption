@@ -12,13 +12,13 @@ class createLastYearSettings
     private $nen;
     private $files;
     private $db;
-    private $exists16;
-    private $exists17;
+    private $exists_last_year;
+    private $exists_this_year;
     private $databases;
 
     public function __construct($options)
     {
-        $this->nen = '17';
+        $this->nen = '18';
 
         $this->files = array(
             1 => '01hokkai.zip',
@@ -80,14 +80,14 @@ class createLastYearSettings
         $user = "tap";
         $pass = $options['p'];
 
-        $dsn = sprintf("mysql:host=%s;port=%s;dbname=17uadmin", $host, $port);
+        $dsn = sprintf("mysql:host=%s;port=%s;dbname=%suadmin", $host, $port,$this->nen);
         /** @var PDO $db */
         $this->db = new PDO($dsn, $user, $pass);
         $this->db->setAttribute(PDO::ATTR_ERRMODE, PDO::ERRMODE_EXCEPTION);
         $this->db->setAttribute(PDO::ATTR_DEFAULT_FETCH_MODE, PDO::FETCH_ASSOC);
 
-        $this->exists16 = array();
-        $this->exists17 = array();
+        $this->exists_last_year = array();
+        $this->exists_this_year = array();
 
         $this->getDatabases();
 
@@ -101,26 +101,26 @@ class createLastYearSettings
         // 存在するデータベース一覧
         $sth = $this->db->query('show databases');
         while ($str = $sth->fetch(PDO::FETCH_NUM)) {
-            if (preg_match('/^u16.{6}$/', $str[0])) {
-                $this->exists16[] = $str[0];
+            if (preg_match('/^u' . ($this->nen - 1) . '.{6}$/', $str[0])) {
+                $this->exists_last_year[] = $str[0];
             }
-            if (preg_match('/^u17.{6}$/', $str[0])) {
-                $this->exists17[] = $str[0];
+            if (preg_match('/^u' . $this->nen . '.{6}$/', $str[0])) {
+                $this->exists_this_year[] = $str[0];
             }
         }
         $sth->closeCursor();
 
-        $this->exists16 = array_filter($this->exists16, 'not_is_demo');
-        $this->exists17 = array_filter($this->exists17, 'not_is_demo');
+        $this->exists_last_year = array_filter($this->exists_last_year, 'not_is_demo');
+        $this->exists_this_year = array_filter($this->exists_this_year, 'not_is_demo');
     }
 
     private function getUsedDatabases()
     {
         // 17版のデータベースでクライアントテーブルでオープンになっているものを抽出
-        $sth = $this->db->query("select clc,nickname,clname from 17uadmin.client where open = 1");
+        $sth = $this->db->query("select clc,nickname,clname from " . $this->nen . "uadmin.client where open = 1");
         $this->databases = array();
         while ($str = $sth->fetch(PDO::FETCH_NUM)) {
-            if (in_array(sprintf('u17%s', $str[0]), $this->exists17)) {
+            if (in_array(sprintf('u' . $this->nen . '%s', $str[0]), $this->exists_this_year)) {
                 $this->databases[] = array('clc' => $str[0], 'nickname' => $str[1], 'clname' => $str[2]);
             }
         }
