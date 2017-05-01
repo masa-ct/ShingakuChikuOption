@@ -5,9 +5,12 @@ include_once('PHPExcel.php');
 date_default_timezone_set('Asia/Tokyo');
 error_reporting(E_ALL);
 
+/**
+ * 昨年度の地区オプションの設定を最新の郵便番号データに適用し、追加用データを作成します
+ * Class createLastYearSettings
+ */
 class createLastYearSettings
 {
-
 
     private $nen;
     private $files;
@@ -18,7 +21,7 @@ class createLastYearSettings
 
     public function __construct($options)
     {
-        $this->nen = '18';
+        $this->nen = '17';
 
         $this->files = array(
             1 => '01hokkai.zip',
@@ -80,7 +83,7 @@ class createLastYearSettings
         $user = "tap";
         $pass = $options['p'];
 
-        $dsn = sprintf("mysql:host=%s;port=%s;dbname=%suadmin", $host, $port,$this->nen);
+        $dsn = sprintf("mysql:host=%s;port=%s;dbname=%suadmin", $host, $port, $this->nen);
         /** @var PDO $db */
         $this->db = new PDO($dsn, $user, $pass);
         $this->db->setAttribute(PDO::ATTR_ERRMODE, PDO::ERRMODE_EXCEPTION);
@@ -94,23 +97,21 @@ class createLastYearSettings
         $this->getUsedDatabases();
 
         $this->createExcelFiles();
+
+        $this->cleanUpZipData();
     }
 
     private function getDatabases()
     {
-        // 存在するデータベース一覧
+        // 存在するデータベース一覧(新年度と昨年度)
         $sth = $this->db->query('show databases');
         while ($str = $sth->fetch(PDO::FETCH_NUM)) {
-            if (preg_match('/^u' . ($this->nen - 1) . '.{6}$/', $str[0])) {
-                $this->exists_last_year[] = $str[0];
-            }
             if (preg_match('/^u' . $this->nen . '.{6}$/', $str[0])) {
                 $this->exists_this_year[] = $str[0];
             }
         }
         $sth->closeCursor();
 
-        $this->exists_last_year = array_filter($this->exists_last_year, 'not_is_demo');
         $this->exists_this_year = array_filter($this->exists_this_year, 'not_is_demo');
     }
 
@@ -217,7 +218,28 @@ class createLastYearSettings
             $filename = $store_dir . sprintf('/【地区オプション】%s昨年度設定一覧.xlsx', $database['clname']);
             createExcel($filename, $lines);
 
+            // 作成したファイルのログ
+            $this->pushCreateFileLog($database);
+
             echo sprintf('[%s] %s作成終了' . PHP_EOL, date('Y-m-d H:i:s'), $database['clname']);
+        }
+    }
+
+    /**
+     * @param array $database
+     */
+    private function pushCreateFileLog($database)
+    {
+        $file_name = __DIR__ . '../../data/create_file_log';
+        $fh = fopen($file_name, "w");
+        fwrite($fh, sprintf("u%s%s\t%s\t%s\n", $this->nen, $database['clc'], $database['clname'], date('Y-m-d H:i:s')));
+        fclose($fh);
+    }
+
+    private function cleanUpZipData()
+    {
+        foreach (glob(__DIR__."/../data/*.CSV") as $filename){
+            unlink( realpath($filename));
         }
     }
 }
