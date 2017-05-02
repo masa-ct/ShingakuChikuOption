@@ -233,7 +233,7 @@ EOT;
                     }
                 }
                 // 必要な項目が揃っていたら取り込む
-                if (count($cells) == 3) {
+                if (count(array_filter($cells)) == 3) {
                     $this->_excel_contents[] = $cells;
                 }
             }
@@ -317,18 +317,15 @@ EOT;
 
     private function checkChikuSettings()
     {
-        // データベースの地区設定を取得する
-        /** @var PDOStatement $sth */
-        $sth = $this->_db->prepare(self::SQL_CHIKUNAME);
-
         // エクセルの地区設定を取得する
         $settings = array_filter(array_combine(array_column($this->_excel_contents, 'chikucd'), array_column($this->_excel_contents, 'chikuname')));
         ksort($settings);
 
         // 名称の設定違い
         foreach ($settings as $index => $setting) {
-            $sth->execute([$index]);
-            if ($str = $sth->fetch()) {
+            // 地区コードから地区名を取得する
+            $this->sth_select_chiku_mast->execute([$index]);
+            if ($str = $this->sth_select_chiku_mast->fetch()) {
                 if ($str['chikuname'] != $setting) {
                     echo "名称相違　axol=" . $str['chikuname'] . ',excel=' . $setting . PHP_EOL;
                     echo('地区名称の変更をしますか?(y/N)');
@@ -337,8 +334,7 @@ EOT;
                         $input = rtrim($input, "\n");
                         if ($input === 'y') {
                             try {
-                                $sth_update = $this->_db->prepare(self::SQL_UPDATE_CHIKUNAME);
-                                $sth_update->execute([$setting, $index]);
+                                $this->sth_update_chiku_mast->execute([$setting, $index]);
                                 echo "更新をしました。\n";
                                 break;
                             } catch (Exception $e) {
@@ -358,8 +354,7 @@ EOT;
                     $input = rtrim($input, "\n");
                     if ($input === 'y') {
                         try {
-                            $sth_insert = $this->_db->prepare('INSERT INTO `chiku_mast`(`chikucd`,`chikuname`,`created_at`) VALUES(?,?,NOW())');
-                            $sth_insert->execute([$index, $setting]);
+                            $this->sth_insert_chiku_mast->execute([$index, $setting]);
                             echo "追加をしました。\n";
                             break;
                         } catch (Exception $e) {
@@ -371,6 +366,16 @@ EOT;
                     }
                 }
             }
+        }
+
+        // 地区設定の削除
+        $chiku_settings = array_keys($settings);      // エクセルファイルに存在する地区コード
+        $inClosure = substr(str_repeat(',?', count($chiku_settings)), 1);
+        $sth_delete = $this->_db->prepare('DELETE FROM `chiku_mast` WHERE NOT `chikucd` IN (' . $inClosure . ')');
+        $sth_delete->execute($chiku_settings);
+        $this->sth_count->execute();
+        if ($str = $this->sth_count->fetch(PDO::FETCH_NUM)) {
+            echo sprintf("chiku_mastを%s件削除しました。\n", $str[0]);
         }
 
         return true;
