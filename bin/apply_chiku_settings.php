@@ -18,14 +18,6 @@ class apply_chiku_settings
 SELECT clname,clc FROM client WHERE nickname=?
 EOT;
 
-    const SQL_CHIKUNAME = <<<EOT
-SELECT chikuname FROM chiku_mast WHERE chikucd=?
-EOT;
-
-    const SQL_UPDATE_CHIKUNAME = <<<EOT
-UPDATE `chiku_mast` SET `chikuname` = ? WHERE `chikucd` = ?
-EOT;
-
     /** @var array $_line_settings */
     private $_line_settings = [0 => 'yubincd', 2 => 'chikucd', 3 => 'chikuname'];
 
@@ -86,70 +78,6 @@ EOT;
             exit;
         }
 
-        // サーバーへの接続
-        try {
-            // パスワードの入力
-            fwrite(STDERR, 'サーバーのパスワードを入力してください: ');
-            if (strncasecmp(PHP_OS, 'WIN', 3) === 0) {
-                // WindowsではエコーバックをOFFにできない
-                @flock(STDIN, LOCK_EX);
-                $pass = trim(fgets(STDIN));
-                @flock(STDIN, LOCK_UN);
-            } else {
-                system('stty -echo');   // エコーバックをOFFにする
-                @flock(STDIN, LOCK_EX);
-                $pass = trim(fgets(STDIN));
-                @flock(STDIN, LOCK_UN);
-                system('stty echo');    // エコーバックをONに戻す
-            }
-            fwrite(STDERR, "\n");
-
-            $dsn = sprintf('mysql:host=%s;dbname=%suadmin', self::C_HOST, self::C_NEN);
-            $this->_db = new PDO($dsn, self::C_USER, $pass);
-            $this->_db->setAttribute(PDO::ATTR_ERRMODE, PDO::ERRMODE_EXCEPTION);
-            $this->_db->setAttribute(PDO::ATTR_DEFAULT_FETCH_MODE, PDO::FETCH_ASSOC);
-            echo "接続成功\n";
-        } catch (Exception $e) {
-            echo $e->getMessage() . PHP_EOL;
-        }
-
-        // 入力されたnicknameから学校名を確認
-        if (!$this->confirmNickName()) {
-            echo "処理を中止します。\n";
-            exit;
-        }
-
-        // データベースに接続
-        try {
-            $this->_db->query(sprintf('USE u%s%s', self::C_NEN, $this->_clc));
-            echo "データベースへの接続成功。\n";
-        } catch (Exception $e) {
-            echo $e->getMessage() . PHP_EOL;
-        }
-
-        // 各PDOstatementの設定
-        $this->setSQL();
-
-        // エクセルファイルの内容を取得
-        if (!$this->getExcelContents()) {
-            echo "エクセルファイルの内容取り込みに失敗しました。\n";
-            exit;
-        }
-
-        // エクセルファイルの内容で整合性が取れているかを確認する
-        if (!$this->checkExcelContents()) {
-            echo "エクセルファイルの内容に確認すべきものがあります。\n";
-            exit;
-        }
-
-        // 地区設定の相違をチェック
-        if (!$this->checkChikuSettings()) {
-            echo "地区の設定に問題がありました。\n";
-            exit;
-        }
-
-        // 地区の更新
-        $this->updateChiku();
     }
 
     /**
@@ -442,7 +370,74 @@ EOT;
         $this->sth_count = $this->_db->prepare('SELECT ROW_COUNT()');
     }
 
+    public function run()
+    {
+        // サーバーへの接続
+        try {
+            // パスワードの入力
+            fwrite(STDERR, 'サーバーのパスワードを入力してください: ');
+            if (strncasecmp(PHP_OS, 'WIN', 3) === 0) {
+                // WindowsではエコーバックをOFFにできない
+                @flock(STDIN, LOCK_EX);
+                $pass = trim(fgets(STDIN));
+                @flock(STDIN, LOCK_UN);
+            } else {
+                system('stty -echo');   // エコーバックをOFFにする
+                @flock(STDIN, LOCK_EX);
+                $pass = trim(fgets(STDIN));
+                @flock(STDIN, LOCK_UN);
+                system('stty echo');    // エコーバックをONに戻す
+            }
+            fwrite(STDERR, "\n");
 
+            $dsn = sprintf('mysql:host=%s;dbname=%suadmin', self::C_HOST, self::C_NEN);
+            $this->_db = new PDO($dsn, self::C_USER, $pass);
+            $this->_db->setAttribute(PDO::ATTR_ERRMODE, PDO::ERRMODE_EXCEPTION);
+            $this->_db->setAttribute(PDO::ATTR_DEFAULT_FETCH_MODE, PDO::FETCH_ASSOC);
+            echo "接続成功\n";
+        } catch (Exception $e) {
+            echo $e->getMessage() . PHP_EOL;
+        }
+
+        // 入力されたnicknameから学校名を確認
+        if (!$this->confirmNickName()) {
+            echo "処理を中止します。\n";
+            exit;
+        }
+
+        // データベースに接続
+        try {
+            $this->_db->query(sprintf('USE u%s%s', self::C_NEN, $this->_clc));
+            echo "データベースへの接続成功。\n";
+        } catch (Exception $e) {
+            echo $e->getMessage() . PHP_EOL;
+        }
+
+        // 各PDOstatementの設定
+        $this->setSQL();
+
+        // エクセルファイルの内容を取得
+        if (!$this->getExcelContents()) {
+            echo "エクセルファイルの内容取り込みに失敗しました。\n";
+            exit;
+        }
+
+        // エクセルファイルの内容で整合性が取れているかを確認する
+        if (!$this->checkExcelContents()) {
+            echo "エクセルファイルの内容に確認すべきものがあります。\n";
+            exit;
+        }
+
+        // 地区設定の相違をチェック
+        if (!$this->checkChikuSettings()) {
+            echo "地区の設定に問題がありました。\n";
+            exit;
+        }
+
+        // 地区の更新
+        $this->updateChiku();
+    }
 }
 
 $apply_chiku_settings = new apply_chiku_settings();
+$apply_chiku_settings->run();
