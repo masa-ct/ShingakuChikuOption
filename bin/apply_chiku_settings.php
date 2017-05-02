@@ -18,10 +18,13 @@ class apply_chiku_settings
 SELECT clname,clc FROM client WHERE nickname=?
 EOT;
 
-    const SQL_CHIKUNAME=<<<EOT
+    const SQL_CHIKUNAME = <<<EOT
 SELECT chikuname FROM chiku_mast WHERE chikucd=?
 EOT;
 
+    const SQL_UPDATE_CHIKUNAME = <<<EOT
+UPDATE `chiku_mast` SET `chikuname` = ? WHERE `chikucd` = ?
+EOT;
 
     /** @var array $_line_settings */
     private $_line_settings = [0 => 'yubincd', 2 => 'chikucd', 3 => 'chikuname'];
@@ -38,6 +41,18 @@ EOT;
     private $_db;
     /** @var  array $_excel_contents */
     private $_excel_contents;
+    /** @var  PDOStatement $sth_select_chiku_mast */
+    private $sth_select_chiku_mast;
+    /** @var  PDOStatement $sth_update_chiku_mast */
+    private $sth_update_chiku_mast;
+    /** @var  PDOStatement $sth_insert_chiku_mast */
+    private $sth_insert_chiku_mast;
+    /** @var  PDOStatement $sth_update_chiku */
+    private $sth_update_chiku;
+    /** @var  PDOStatement $sth_insert_chiku */
+    private $sth_insert_chiku;
+    /** @var  PDOStatement $sth_count */
+    private $sth_count;
 
     /**
      * apply_chiku_settings constructor.
@@ -112,6 +127,9 @@ EOT;
             echo $e->getMessage() . PHP_EOL;
         }
 
+        // 各PDOstatementの設定
+        $this->setSQL();
+
         // エクセルファイルの内容を取得
         if (!$this->getExcelContents()) {
             echo "エクセルファイルの内容取り込みに失敗しました。\n";
@@ -125,9 +143,13 @@ EOT;
         }
 
         // 地区設定の相違をチェック
-        if ($this->checkChikuSettings()){
-
+        if (!$this->checkChikuSettings()) {
+            echo "地区の設定に問題がありました。\n";
+            exit;
         }
+
+        // 地区の更新
+        $this->updateChiku();
     }
 
     /**
@@ -242,7 +264,7 @@ EOT;
             }
         }
         // 地区設定の重複チェック
-        if ($duplications=$this->checkDuplicateSettings()){
+        if ($duplications = $this->checkDuplicateSettings()) {
             $file_path = __DIR__ . '/../data/地区設定重複.txt';
             $fh = fopen($file_path, "w");
             foreach ($duplications as $line) {
@@ -280,12 +302,12 @@ EOT;
         $data = [];
         // 地区コードをキーにして地区名を配列に格納していく
         foreach ($this->_excel_contents as $excel_content) {
-            $data[$excel_content['chikucd']][]=$excel_content['chikuname'];
+            $data[$excel_content['chikucd']][] = $excel_content['chikuname'];
         }
         $rtn = [];
         foreach ($data as $index => $datum) {
             // 重複を削除
-            $chikunames=array_unique($datum);
+            $chikunames = array_unique($datum);
             if (count($chikunames) > 1) {
                 $rtn[] = sprintf('地区コード「%s」に対して複数の地区名[%s]が設定されています。', $index, implode(',', $chikunames));
             }
@@ -300,23 +322,119 @@ EOT;
         $sth = $this->_db->prepare(self::SQL_CHIKUNAME);
 
         // エクセルの地区設定を取得する
-        $settings =array_filter (array_combine(array_column($this->_excel_contents, 'chikucd'), array_column($this->_excel_contents, 'chikuname')));
+        $settings = array_filter(array_combine(array_column($this->_excel_contents, 'chikucd'), array_column($this->_excel_contents, 'chikuname')));
         ksort($settings);
 
         // 名称の設定違い
         foreach ($settings as $index => $setting) {
             $sth->execute([$index]);
-            if ($str=$sth->fetch()){
-                if ($str['chikuname']!=$setting){
-                    echo "名称相違　axol=".$str['chikuname'].',excel='.$setting.PHP_EOL;
+            if ($str = $sth->fetch()) {
+                if ($str['chikuname'] != $setting) {
+                    echo "名称相違　axol=" . $str['chikuname'] . ',excel=' . $setting . PHP_EOL;
+                    echo('地区名称の変更をしますか?(y/N)');
+                    while (true) {
+                        $input = fgets(STDIN, 10);
+                        $input = rtrim($input, "\n");
+                        if ($input === 'y') {
+                            try {
+                                $sth_update = $this->_db->prepare(self::SQL_UPDATE_CHIKUNAME);
+                                $sth_update->execute([$setting, $index]);
+                                echo "更新をしました。\n";
+                                break;
+                            } catch (Exception $e) {
+                                echo $e->getMessage() . PHP_EOL;
+                            }
+                        } else {
+                            echo "処理を中止します。\n";
+                            return false;
+                        }
+                    }
                 }
             } else {
-                echo "設定なし　コード=".$index.',名称='.$setting.PHP_EOL;
+                echo "設定なし　コード=" . $index . ',名称=' . $setting . PHP_EOL;
+                echo('地区の追加をしますか?(y/N)');
+                while (true) {
+                    $input = fgets(STDIN, 10);
+                    $input = rtrim($input, "\n");
+                    if ($input === 'y') {
+                        try {
+                            $sth_insert = $this->_db->prepare('INSERT INTO `chiku_mast`(`chikucd`,`chikuname`,`created_at`) VALUES(?,?,NOW())');
+                            $sth_insert->execute([$index, $setting]);
+                            echo "追加をしました。\n";
+                            break;
+                        } catch (Exception $e) {
+                            echo $e->getMessage() . PHP_EOL;
+                        }
+                    } else {
+                        echo "処理を中止します。\n";
+                        return false;
+                    }
+                }
             }
         }
 
+        return true;
+    }
 
-        return false;
+    private function updateChiku()
+    {
+        // 設定済み郵便番号を取得
+        /** @var PDOStatement $sth */
+        $sth = $this->_db->query('SELECT `yubincd` FROM `chiku`');
+        $exists = $sth->fetchAll(PDO::FETCH_COLUMN, 0);
+
+        // 追加
+        $cnt_add = 0;
+        $additions = array_diff(array_column($this->_excel_contents, 'yubincd'), $exists);
+        if (count($additions) > 0) {
+            foreach ($additions as $index => $addition) {
+                // キーでエクセルの内容を呼び出して書き込み
+                $this->sth_insert_chiku->execute([$this->_excel_contents[$index]['yubincd'], $this->_excel_contents[$index]['chikucd']]);
+                $this->sth_count->execute();
+                if ($str = $this->sth_count->fetch(PDO::FETCH_NUM)) {
+                    $cnt_add = $cnt_add + $str[0];
+                }
+            }
+            echo sprintf("chikuに%s件追加しました。\n", $cnt_add);
+        }
+
+        // 更新
+        $cnt_update = 0;
+        foreach ($this->_excel_contents as $excel_content) {
+            if (in_array($excel_content['yubincd'], $exists)) {
+                $this->sth_update_chiku->execute([$excel_content['chikucd'], $excel_content['yubincd']]);
+                $this->sth_count->execute();
+                if ($str = $this->sth_count->fetch(PDO::FETCH_NUM)) {
+                    $cnt_update = $cnt_update + $str[0];
+                }
+            }
+        }
+        echo sprintf("chikuを%s件更新しました。\n", $cnt_update);
+
+        // 削除
+        $current_data = array_column($this->_excel_contents, 'yubincd');
+        $inClose = substr(str_repeat(',?', count($current_data)), 1);
+        $sth_delete = $this->_db->prepare('DELETE FROM `chiku` WHERE NOT `yubincd` IN (' . $inClose . ')');
+        $sth_delete->execute($current_data);
+        $this->sth_count->execute();
+        if ($str = $this->sth_count->fetch(PDO::FETCH_NUM)) {
+            echo sprintf("chikuを%s件削除しました。\n", $str[0]);
+        }
+    }
+
+    private function setSQL()
+    {
+        // chiku_mast
+        $this->sth_select_chiku_mast = $this->_db->prepare('SELECT `chikuname` FROM `chiku_mast` WHERE `chikucd` = ?');
+        $this->sth_update_chiku_mast = $this->_db->prepare('UPDATE `chiku_mast` SET `chikuname` = ? WHERE `chikucd` = ?');
+        $this->sth_insert_chiku_mast = $this->_db->prepare('INSERT INTO `chiku_mast`(`chikucd`,`chikuname`,`created_at`) VALUES(?,?,NOW())');
+
+        // chiku
+        $this->sth_update_chiku = $this->_db->prepare('UPDATE `chiku` SET `chikucd` = ? WHERE `yubincd` = ?');
+        $this->sth_insert_chiku = $this->_db->prepare('INSERT INTO `chiku`(`yubincd`,`chikucd`,`created_at`) VALUES(?,?,NOW())');
+
+        // count
+        $this->sth_count = $this->_db->prepare('SELECT ROW_COUNT()');
     }
 
 
