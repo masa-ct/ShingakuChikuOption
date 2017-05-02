@@ -279,7 +279,7 @@ EOT;
                 }
             } else {
                 // 地区オプション未設定の場合は無条件で追加していく
-                if (!$is_chiku_option){
+                if (!$is_chiku_option) {
                     $this->sth_insert_chiku_mast->execute([$index, $setting]);
                 } else {
                     echo "設定なし　コード=" . $index . ',名称=' . $setting . PHP_EOL;
@@ -321,12 +321,14 @@ EOT;
     {
         // 設定済み郵便番号を取得
         /** @var PDOStatement $sth */
-        $sth = $this->_db->query('SELECT `yubincd` FROM `chiku`');
-        $exists = $sth->fetchAll(PDO::FETCH_COLUMN, 0);
+        $sth = $this->_db->query('SELECT `yubincd`,`chikucd` FROM `chiku`');
+        $exists = $sth->fetchAll();
+        // yubincdをキーに、chikucdを値にする
+        $exists = array_combine(array_column($exists, 'yubincd'), array_column($exists, 'chikucd'));
 
         // 追加
         $cnt_add = 0;
-        $additions = array_diff(array_column($this->_excel_contents, 'yubincd'), $exists);
+        $additions = array_diff(array_column($this->_excel_contents, 'yubincd'), array_keys($exists));
         if (count($additions) > 0) {
             foreach ($additions as $index => $addition) {
                 // キーでエクセルの内容を呼び出して書き込み
@@ -342,11 +344,13 @@ EOT;
         // 更新
         $cnt_update = 0;
         foreach ($this->_excel_contents as $excel_content) {
-            if (in_array($excel_content['yubincd'], $exists)) {
-                $this->sth_update_chiku->execute([$excel_content['chikucd'], $excel_content['yubincd']]);
-                $this->sth_count->execute();
-                if ($str = $this->sth_count->fetch(PDO::FETCH_NUM)) {
-                    $cnt_update = $cnt_update + $str[0];
+            if (array_key_exists($excel_content['yubincd'], $exists)) {
+                if ($excel_content['chikucd'] != $exists[$excel_content['yubincd']]) {
+                    $this->sth_update_chiku->execute([$excel_content['chikucd'], $excel_content['yubincd']]);
+                    $this->sth_count->execute();
+                    if ($str = $this->sth_count->fetch(PDO::FETCH_NUM)) {
+                        $cnt_update = $cnt_update + $str[0];
+                    }
                 }
             }
         }
