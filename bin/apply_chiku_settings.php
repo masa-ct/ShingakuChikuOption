@@ -245,6 +245,9 @@ EOT;
 
     private function checkChikuSettings()
     {
+        // 地区オプションを設定済みかどうかを取得する
+        $is_chiku_option = $this->isChikuOption();
+
         // エクセルの地区設定を取得する
         $settings = array_filter(array_combine(array_column($this->_excel_contents, 'chikucd'), array_column($this->_excel_contents, 'chikuname')));
         ksort($settings);
@@ -275,22 +278,27 @@ EOT;
                     }
                 }
             } else {
-                echo "設定なし　コード=" . $index . ',名称=' . $setting . PHP_EOL;
-                echo('地区の追加をしますか?(y/N)');
-                while (true) {
-                    $input = fgets(STDIN, 10);
-                    $input = rtrim($input, "\n");
-                    if ($input === 'y') {
-                        try {
-                            $this->sth_insert_chiku_mast->execute([$index, $setting]);
-                            echo "追加をしました。\n";
-                            break;
-                        } catch (Exception $e) {
-                            echo $e->getMessage() . PHP_EOL;
+                // 地区オプション未設定の場合は無条件で追加していく
+                if (!$is_chiku_option){
+                    $this->sth_insert_chiku_mast->execute([$index, $setting]);
+                } else {
+                    echo "設定なし　コード=" . $index . ',名称=' . $setting . PHP_EOL;
+                    echo('地区の追加をしますか?(y/N)');
+                    while (true) {
+                        $input = fgets(STDIN, 10);
+                        $input = rtrim($input, "\n");
+                        if ($input === 'y') {
+                            try {
+                                $this->sth_insert_chiku_mast->execute([$index, $setting]);
+                                echo "追加をしました。\n";
+                                break;
+                            } catch (Exception $e) {
+                                echo $e->getMessage() . PHP_EOL;
+                            }
+                        } else {
+                            echo "処理を中止します。\n";
+                            return false;
                         }
-                    } else {
-                        echo "処理を中止します。\n";
-                        return false;
                     }
                 }
             }
@@ -437,6 +445,21 @@ EOT;
         // 地区の更新
         $this->updateChiku();
     }
+
+    private function isChikuOption()
+    {
+        $ret = false;
+
+        // set_kaisを調べる
+        $sth = $this->_db->query('SELECT `value` FROM `set_kais` WHERE `item` = \'is_chiku\'');
+        if ($str = $sth->fetch(PDO::FETCH_ASSOC)) {
+            $ret = ('1' == $str['value']);
+            // 地区オプション使用状態にする
+            $this->_db->query('UPDATE `set_kais` SET `value` = \'1\' WHERE `item` = \'is_chiku\'');
+        }
+        return $ret;
+    }
+
 }
 
 $apply_chiku_settings = new apply_chiku_settings();
