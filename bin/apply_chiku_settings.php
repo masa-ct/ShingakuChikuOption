@@ -10,8 +10,8 @@ date_default_timezone_set('Asia/Tokyo');
  */
 class apply_chiku_settings
 {
-    const C_HOST = '192.168.2.164';
-    const C_USER = 'root';
+    const C_HOST = 'ono';
+    const C_USER = 'tap';
     const C_NEN = 18;
 
     const SQL_CLNAME = <<<EOT
@@ -154,12 +154,12 @@ EOT;
             } else {
                 $cells = [];
                 foreach ($row->getCellIterator() as $index => $cell) {
-                    if ($index > 3) {
+                    if ($index > max(array_keys($this->_line_settings))) {
                         break;
                     }
                     if (in_array($index, array_keys($this->_line_settings))) {
                         if ($cell) {
-                            $cells[$this->_line_settings[$index]] = $cell->getValue();
+                            $cells[$this->_line_settings[$index]] = $this->_line_settings[$index] == 'yubincd' ? (string)$cell->getValue() : $cell->getValue();
                         }
                     }
                 }
