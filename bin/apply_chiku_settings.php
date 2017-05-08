@@ -19,7 +19,7 @@ SELECT clname,clc FROM client WHERE nickname=?
 EOT;
 
     /** @var array $_line_settings */
-    private $_line_settings = [0 => 'yubincd', 2 => 'chikucd', 3 => 'chikuname'];
+    private $_line_settings;
 
     /** @var  string $_file_name */
     private $_file_name;
@@ -157,7 +157,7 @@ EOT;
                     if ($index > 3) {
                         break;
                     }
-                    if (in_array($index, [0, 2, 3])) {
+                    if (in_array($index, array_keys($this->_line_settings))) {
                         if ($cell) {
                             $cells[$this->_line_settings[$index]] = $cell->getValue();
                         }
@@ -431,6 +431,12 @@ EOT;
         // 各PDOstatementの設定
         $this->setSQL();
 
+        // エクセルファイルの項目を取得
+        if (!$this->setHeaderInfo()) {
+            echo "エクセルファイルに必要なシート、カラムがありません。\n";
+            exit;
+        }
+
         // エクセルファイルの内容を取得
         if (!$this->getExcelContents()) {
             echo "エクセルファイルの内容取り込みに失敗しました。\n";
@@ -465,6 +471,51 @@ EOT;
             $this->_db->query('UPDATE `set_kais` SET `value` = \'1\' WHERE `item` = \'is_chiku\'');
         }
         return $ret;
+    }
+
+    /**
+     * エクセルに必要なシート、カラムが存在することを確認し、カラムの位置を取得する
+     * @return bool
+     */
+    private function setHeaderInfo()
+    {
+        // Excelリーダーのセット
+        /** @var PHPExcel_IOFactory::load $objPHPExcel */
+        $objPHPExcel = PHPExcel_IOFactory::load($this->_file_path);
+
+        // シートの選択
+        if ($objPHPExcel->sheetNameExists('郵便番号データ')){
+            /** @var PHPExcel_Worksheet $objSheet */
+            $objSheet = $objPHPExcel->getActiveSheet();
+
+            // シートの内容を取得
+            foreach ($objSheet->getRowIterator() as $row) {
+                $cells = [];
+                foreach ($row->getCellIterator() as $index => $cell) {
+                    // カラム名の取得
+                    $column_value = $cell->getValue();
+                    switch (true) {
+                        case $column_value == '郵便番号':
+                            $cells[$index] = 'yubincd';
+                            break;
+                        case $column_value == '地区コード':
+                            $cells[$index] = 'chikucd';
+                            break;
+                        case  $column_value == '地区':
+                            $cells[$index] = 'chikuname';
+                            break;
+                    }
+                }
+                // 必要な項目が揃っていたら取り込む
+                if (count(array_filter($cells)) == 3) {
+                    $this->_line_settings = $cells;
+                    return true;
+                }
+                break;
+            }
+        }
+
+        return false;
     }
 
 }
