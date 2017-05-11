@@ -159,7 +159,9 @@ EOT;
                     }
                     if (in_array($index, array_keys($this->_line_settings))) {
                         if ($cell) {
-                            $cells[$this->_line_settings[$index]] = $this->_line_settings[$index] == 'yubincd' ? (string)$cell->getValue() : $cell->getValue();
+                            $cells[$this->_line_settings[$index]] = $this->_line_settings[$index] == 'chikucd'
+                                ? (int)$cell->getValue()
+                                : (string)$cell->getValue();
                         }
                     }
                 }
