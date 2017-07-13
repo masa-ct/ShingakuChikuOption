@@ -250,6 +250,9 @@ EOT;
 
     private function checkChikuSettings()
     {
+        // 追加件数カウンター
+        $additional_count = 0;
+
         // 地区オプションを設定済みかどうかを取得する
         $is_chiku_option = $this->isChikuOption();
 
@@ -286,6 +289,7 @@ EOT;
                 // 地区オプション未設定の場合は無条件で追加していく
                 if (!$is_chiku_option) {
                     $this->sth_insert_chiku_mast->execute([$index, $setting]);
+                    $additional_count++;
                 } else {
                     echo "設定なし　コード=" . $index . ',名称=' . $setting . PHP_EOL;
                     echo('地区の追加をしますか?(y/N)');
@@ -295,6 +299,7 @@ EOT;
                         if ($input === 'y') {
                             try {
                                 $this->sth_insert_chiku_mast->execute([$index, $setting]);
+                                $additional_count++;
                                 echo "追加をしました。\n";
                                 break;
                             } catch (Exception $e) {
@@ -309,6 +314,9 @@ EOT;
             }
         }
 
+        // 追加件数の表示
+        echo sprintf("chiku_mastに%s件追加しました。\n", $additional_count);
+
         // 地区設定の削除
         $chiku_settings = array_keys($settings);      // エクセルファイルに存在する地区コード
         $inClosure = substr(str_repeat(',?', count($chiku_settings)), 1);
@@ -316,7 +324,9 @@ EOT;
         $sth_delete->execute($chiku_settings);
         $this->sth_count->execute();
         if ($str = $this->sth_count->fetch(PDO::FETCH_NUM)) {
-            echo sprintf("chiku_mastを%s件削除しました。\n", $str[0]);
+            if ($str[0]) {
+                echo sprintf("chiku_mastを%s件削除しました。\n", $str[0]);
+            }
         }
 
         return true;
@@ -414,6 +424,7 @@ EOT;
             echo "接続成功\n";
         } catch (Exception $e) {
             echo $e->getMessage() . PHP_EOL;
+            exit;
         }
 
         // 入力されたnicknameから学校名を確認
@@ -486,7 +497,7 @@ EOT;
         $objPHPExcel = PHPExcel_IOFactory::load($this->_file_path);
 
         // シートの選択
-        if ($objPHPExcel->sheetNameExists('郵便番号データ')){
+        if ($objPHPExcel->sheetNameExists('郵便番号データ')) {
             /** @var PHPExcel_Worksheet $objSheet */
             $objSheet = $objPHPExcel->getActiveSheet();
 
