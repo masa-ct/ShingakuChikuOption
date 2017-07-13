@@ -10,8 +10,8 @@ date_default_timezone_set('Asia/Tokyo');
  */
 class apply_chiku_settings
 {
-    const C_HOST = 'ono';
-    const C_USER = 'tap';
+    const C_HOST = '192.168.33.3';
+    const C_USER = 'root';
     const C_NEN = 18;
 
     const SQL_CLNAME = <<<EOT
