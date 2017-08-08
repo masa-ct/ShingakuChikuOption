@@ -1,4 +1,9 @@
 .idea
 data
 org
-util
+util/Classes
+util/Documentation
+util/Examples
+util/changelog.txt
+util/install.txt
+util/license.txt
