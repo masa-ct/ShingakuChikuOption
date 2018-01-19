@@ -2,10 +2,12 @@
 require_once __DIR__ . '/../util/requireIdPassWord.php';
 require_once __DIR__ . '/../util/getZipData.php';
 require_once __DIR__ . '/../util/createExcelData.php';
+require_once __DIR__ . '/../service/adjustPrefecture.php';
+
 date_default_timezone_set('Asia/Tokyo');
 
 // 引数の処理
-$opts = getopt('hn:');
+$opts = getopt('hn:p:');
 if (!$opts
     || !array_key_exists('n', $opts)
     || array_key_exists('h', $opts)
@@ -14,6 +16,9 @@ if (!$opts
     print("* 地区オプション更新　オプション一覧\n*\n");
     print("*   -n : (nickname) 必須。\n");
     print("*                      対象学校のnicknameを指定。\n");
+    print("*   -p : (prefecture) 任意。\n");
+    print("*                      現在の設定に都道府県を追加したい場合に\n");
+    print("*                      県名またはコードをカンマ繋ぎで指定。\n");
     print("*===============================================================================\n");
     exit;
 }
@@ -39,12 +44,26 @@ class createZipDataIncludeCurrentSettings
     private $_prefectures;
     private $_chiku_settings;
     private $_clc;
+    private $additional_prefectures;
 
-    public function __construct($nickname)
+    /**
+     * createZipDataIncludeCurrentSettings constructor.
+     * @param array $opts
+     */
+    public function __construct($opts)
     {
-        $this->setNickname($nickname);
+        $this->setNickname($opts['n']);
         $this->setAdminClient();
-        $this->getChikuSettings();      // 地区の設定を取得し、その情報から地区を設定している都道府県を判定する
+
+        try {
+            $this->setAdditionalPrefectures($opts);
+        } catch (Exception $e) {
+            echo $e->getMessage();
+            exit;
+        }
+        $this->getChikuSettings();      // 地区の設定を取得する
+        $this->getPrefectures();        // 取得した地区の設定の郵便番号から、都道府県を判定
+        $this->addPrefectures();        // パラメータで追加された都道府県コードを追加
     }
 
     /**
@@ -84,6 +103,9 @@ class createZipDataIncludeCurrentSettings
         }
     }
 
+    /**
+     *
+     */
     private function getChikuSettings()
     {
         $sth = $this->_clientdb->prepare('SELECT yubincd,chikuname,chiku.chikucd FROM chiku LEFT JOIN chiku_mast USING (chikucd)');
@@ -100,16 +122,11 @@ class createZipDataIncludeCurrentSettings
         foreach ($str as $item) {
             $this->_chiku_settings[$item['yubincd']] = ['chikucd' => $item['chikucd'], 'chikuname' => $item['chikuname']];
         }
-        // 設定されている郵便番号の取得
-        $zip_codes = array_keys($this->_chiku_settings);
-
-        // 設定されている都道府県の取得
-        $sql = 'SELECT code_ken FROM yubin WHERE yubincd IN (' . substr(str_repeat(',?', count($zip_codes)), 1) . ') GROUP BY code_ken';
-        $sth = $this->_admin->prepare($sql);
-        $sth->execute($zip_codes);
-        $this->_prefectures = array_column($sth->fetchAll(PDO::FETCH_ASSOC), 'code_ken');
     }
 
+    /**
+     *
+     */
     public function run()
     {
         if (!getZipData::downloadData($this->_prefectures)) {
@@ -122,7 +139,50 @@ class createZipDataIncludeCurrentSettings
 
         getZipData::cleanUpZipData();
     }
+
+    /**
+     *
+     */
+    private function getPrefectures()
+    {
+        // 設定されている郵便番号の取得
+        $zip_codes = array_keys($this->_chiku_settings);
+
+        // 設定されている都道府県の取得
+        $sql = 'SELECT code_ken FROM yubin WHERE yubincd IN (' . substr(str_repeat(',?', count($zip_codes)), 1) . ') GROUP BY code_ken';
+        $sth = $this->_admin->prepare($sql);
+        $sth->execute($zip_codes);
+        $this->_prefectures = array_column($sth->fetchAll(PDO::FETCH_ASSOC), 'code_ken');
+    }
+
+    /**
+     * @param $opts
+     * @throws Exception
+     */
+    private function setAdditionalPrefectures($opts)
+    {
+        if (!isset($opts['p'])) {
+            $this->additional_prefectures = [];
+        } else {
+            $adjust_prefecture = new adjustPrefecture($this->_admin, $opts['p']);
+            $this->additional_prefectures = $adjust_prefecture->getCodes();
+        }
+    }
+
+    /**
+     *
+     */
+    private function addPrefectures()
+    {
+        if ($this->additional_prefectures) {
+            foreach ($this->additional_prefectures as $prefecture) {
+                if (!in_array($prefecture, $this->_prefectures)) {
+                    $this->_prefectures[] = $prefecture;
+                }
+            }
+        }
+    }
 }
 
-$create_zip_data_include_current_settings = new createZipDataIncludeCurrentSettings($opts['n']);
+$create_zip_data_include_current_settings = new createZipDataIncludeCurrentSettings($opts);
 $create_zip_data_include_current_settings->run();
