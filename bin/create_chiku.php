@@ -40,7 +40,8 @@ class createChiku
             print("* 地区オプション用郵便番号データ作成　オプション一覧\n*\n");
             print("*   -p : (prefectures) 必須。\n");
             print("*                      対象とする都道府県を、都道府県名あるいはコードで指定します。\n");
-            print("*                      名称とコードの混在可。　カンマ「,」で連結してください。\n*\n");
+            print("*                      名称とコードの混在可。　カンマ「,」で連結してください。\n");
+            print("*                      数値の範囲指定(例 1-13)もできます。\n*\n");
             print("*===============================================================================\n");
             exit;
         }
@@ -330,6 +331,7 @@ EOM;
 
         /* パラメータの値をカンマで分割し、数値の場合は都道府県コードとしての妥当性を確認した
          * 上で配列に格納し、そうでない文字列の場合はコード化して配列に格納する。
+         * 数値の範囲指定の場合はその間の値をセットする
          */
         $this->prefectures = [];
         $this->pref_names = [];
@@ -342,6 +344,16 @@ EOM;
             if (is_numeric($value)) {
                 // 数値の場合
                 $num = (int)$value;
+            } elseif (preg_match('/^(?P<start>\d+)-(?P<end>\d+)$/', $value, $matches)) {
+                for ($i = $matches['start']; $i <= $matches['end']; $i++) {
+                    // 取得したコードのバリデーションも兼ねて都道府県名を取得
+                    $sth_get_name->execute([$i]);
+                    if ($str = $sth_get_name->fetch(PDO::FETCH_ASSOC)) {
+                        $this->prefectures[$i] = '';
+                        $this->pref_names[$i] = $str['name'];
+                    }
+                }
+                break 1;
             } else {
                 // 文字列の場合
                 $sth_get_cd->execute([$value]);
