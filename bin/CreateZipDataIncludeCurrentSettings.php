@@ -28,12 +28,12 @@ if (!$opts
  * 現在設定されている地区設定を反映した郵便番号データを作成します
  * Class createZipDataIncludeCurrentSettings
  */
-class createZipDataIncludeCurrentSettings
+class CreateZipDataIncludeCurrentSettings
 {
-    const C_SERVER = 'ono';
+    const C_SERVER = 'tokushima';
     const C_ADMINBASE = 'uadmin';
-    const C_USER = 'tap';
-    const C_NEN = 18;
+    const C_USER = 'selector';
+    const C_NEN = 19;
 
     private $_nickname;
     /** @var  PDO */
@@ -184,5 +184,5 @@ class createZipDataIncludeCurrentSettings
     }
 }
 
-$create_zip_data_include_current_settings = new createZipDataIncludeCurrentSettings($opts);
+$create_zip_data_include_current_settings = new CreateZipDataIncludeCurrentSettings($opts);
 $create_zip_data_include_current_settings->run();

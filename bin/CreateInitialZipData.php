@@ -5,7 +5,7 @@ ini_set('display_errors', 1);
 date_default_timezone_set('Asia/Tokyo');
 error_reporting(E_ALL);
 
-class createChiku
+class CreateInitialZipData
 {
     /**
      * @var PDO $db
@@ -17,9 +17,11 @@ class createChiku
      */
     private $clientname;
 
-    const C_HOST = 'ono';
-    const C_PORT = "3306";
-    const C_USER = "tap";
+    const C_HOST = 'tokushima';
+    const C_PORT = '3306';
+    const C_USER = 'selector';
+    const C_ADMINDB = '19uadmin';
+
     /**
      * @var array
      */
@@ -115,7 +117,7 @@ class createChiku
      */
     public function addData()
     {
-        $this->db->query('USE 17uadmin');
+        $this->db->query('USE ' . static::C_ADMINDB);
 
         // 県コードを指定して高校マスタを読み込む
         $sth = $this->db->prepare(
@@ -286,7 +288,7 @@ class createChiku
     public function setDb()
     {
         // サーバーのパスワード入力
-        fwrite(STDERR, 'onoのPassword: ');
+        fwrite(STDERR, sprintf('%sのPassword: ', static::C_HOST));
         if (strncasecmp(PHP_OS, 'WIN', 3) === 0) {
             // WindowsではエコーバックをOFFにできない
             @flock(STDIN, LOCK_EX);
@@ -301,7 +303,7 @@ class createChiku
         }
         fwrite(STDERR, "\n");
 
-        $dsn = sprintf("mysql:host=%s;port=%s;dbname=17uadmin", static::C_HOST, static::C_PORT);
+        $dsn = sprintf("mysql:host=%s;port=%s;dbname=%s", static::C_HOST, static::C_PORT, static::C_ADMINDB);
         $this->db = new PDO($dsn, static::C_USER, $password);
         $this->db->setAttribute(PDO::ATTR_ERRMODE, PDO::ERRMODE_EXCEPTION);
         $this->db->setAttribute(PDO::ATTR_DEFAULT_FETCH_MODE, PDO::FETCH_ASSOC);
@@ -447,7 +449,7 @@ EOM;
 
 }
 
-$create_chiku = new createChiku();
+$create_chiku = new CreateInitialZipData();
 $create_chiku->getZipData();        // 郵便番号データをダウンロードする
 $create_chiku->addData();     // データを配列に格納する
 $create_chiku->createExcel();

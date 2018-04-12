@@ -2,27 +2,36 @@
 ini_set('display_errors', 1);
 set_include_path(__DIR__ . '/../util/Classes');
 include_once('PHPExcel.php');
+require_once __DIR__ . '/../util/requireIdPassWord.php';
+require_once __DIR__ . '/../util/createExcelData.php';
 date_default_timezone_set('Asia/Tokyo');
 error_reporting(E_ALL);
 
 /**
- * 昨年度の地区オプションの設定を最新の郵便番号データに適用し、追加用データを作成します
+ * 今年度の地区オプションの設定を最新の郵便番号データに適用し、追加用データを作成します
  * Class createLastYearSettings
  */
 class createLastYearSettings
 {
+    const C_SERVER = 'tokushima';
+    const C_PORT = 3306;
+    const C_ADMINBASE = 'uadmin';
+    const C_USER = 'selector';
+    const C_YEAR = '19';    // 参照する年度
 
-    private $nen;
     private $files;
     private $db;
     private $exists_last_year;
     private $exists_this_year;
     private $databases;
 
-    public function __construct($options)
-    {
-        $this->nen = '17';
+    private $log_file_name;     // ログファイル
 
+    /**
+     * createLastYearSettings constructor.
+     */
+    public function __construct()
+    {
         $this->files = array(
             1 => '01hokkai.zip',
             2 => '02aomori.zip',
@@ -73,24 +82,29 @@ class createLastYearSettings
             47 => '47okinaw.zip'
         );
 
+        try {
+            // パスワードの入力を求め、サーバーに接続する
+            $pass = requireIdPassWord::getParam(self::C_SERVER, 'パスワード');
+            $dsn = sprintf("mysql:host=%s;port=%s;dbname=%suadmin", self::C_SERVER, self::C_PORT, self::C_YEAR);
+            /** @var PDO $db */
+            $this->db = new PDO($dsn, self::C_USER, $pass);
+            $this->db->setAttribute(PDO::ATTR_ERRMODE, PDO::ERRMODE_EXCEPTION);
+            $this->db->setAttribute(PDO::ATTR_DEFAULT_FETCH_MODE, PDO::FETCH_ASSOC);
+        } catch (Exception $e) {
+            echo '捕捉した例外: ' . $e->getMessage() . PHP_EOL;
+            exit;
+        }
+
         if (false === $this->getZipData()) {
             echo '郵便番号データの取得に失敗したので、作業を中止します。' . PHP_EOL;
             exit;
         }
 
-        $host = "ono";
-        $port = "3306";
-        $user = "tap";
-        $pass = $options['p'];
-
-        $dsn = sprintf("mysql:host=%s;port=%s;dbname=%suadmin", $host, $port, $this->nen);
-        /** @var PDO $db */
-        $this->db = new PDO($dsn, $user, $pass);
-        $this->db->setAttribute(PDO::ATTR_ERRMODE, PDO::ERRMODE_EXCEPTION);
-        $this->db->setAttribute(PDO::ATTR_DEFAULT_FETCH_MODE, PDO::FETCH_ASSOC);
-
         $this->exists_last_year = array();
         $this->exists_this_year = array();
+
+        // ログファイルの設定
+        $this->initLogFile();
 
         $this->getDatabases();
 
@@ -104,11 +118,9 @@ class createLastYearSettings
     private function getDatabases()
     {
         // 存在するデータベース一覧(新年度と昨年度)
-        $sth = $this->db->query('show databases');
+        $sth = $this->db->query(sprintf("SHOW DATABASES LIKE 'u%s______'", self::C_YEAR));
         while ($str = $sth->fetch(PDO::FETCH_NUM)) {
-            if (preg_match('/^u' . $this->nen . '.{6}$/', $str[0])) {
-                $this->exists_this_year[] = $str[0];
-            }
+            $this->exists_this_year[] = $str[0];
         }
         $sth->closeCursor();
 
@@ -117,11 +129,11 @@ class createLastYearSettings
 
     private function getUsedDatabases()
     {
-        // 17版のデータベースでクライアントテーブルでオープンになっているものを抽出
-        $sth = $this->db->query("select clc,nickname,clname from " . $this->nen . "uadmin.client where open = 1");
-        $this->databases = array();
+        // 参照する年度のデータベースでクライアントテーブルでオープンになっているものを抽出
+        $sth = $this->db->query(sprintf("SELECT `clc`,`nickname`,`clname` FROM `%suadmin`.`client` WHERE `open` = 1", self::C_YEAR));
+        $this->databases = [];
         while ($str = $sth->fetch(PDO::FETCH_NUM)) {
-            if (in_array(sprintf('u' . $this->nen . '%s', $str[0]), $this->exists_this_year)) {
+            if (in_array(sprintf('u%s%s', self::C_YEAR, $str[0]), $this->exists_this_year)) {
                 $this->databases[] = array('clc' => $str[0], 'nickname' => $str[1], 'clname' => $str[2]);
             }
         }
@@ -130,7 +142,7 @@ class createLastYearSettings
         $sth = $this->db->prepare("select value from set_kais where class='ks' and item='is_chiku'");
         foreach ($this->databases as $key => $database) {
             $is_chiku = false;
-            $this->db->query(sprintf('use u%s%s', $this->nen, $database['clc']));
+            $this->db->query(sprintf('use u%s%s', self::C_YEAR, $database['clc']));
             $sth->execute(array());
             if ($str = $sth->fetch()) {
                 if ($str['value'] == '1') {
@@ -141,7 +153,7 @@ class createLastYearSettings
                 // 使用している郵便番号から都道府県コードを取得
                 $ken = array();
                 $sth_ken = $this->db->query(
-                    'select code_ken from common_u.yubin inner join chiku using (yubincd) group by code_ken'
+                    "SELECT `code_ken` FROM `chiku` INNER JOIN `common_u`.yubin USING (yubincd) GROUP BY `code_ken`"
                 );
                 while ($str = $sth_ken->fetch()) {
                     $ken[] = $str['code_ken'];
@@ -198,30 +210,14 @@ class createLastYearSettings
 
     private function createExcelFiles()
     {
-        $store_dir = realpath(__DIR__ . '/../data/');
-
         // クライアントごとのファイルを作成する
         foreach ($this->databases as $database) {
-            echo sprintf('[%s] %s作成開始' . PHP_EOL, date('Y-m-d H:i:s'), $database['clname']);
-
-            sort($database['ken']);
-            $use = array();
-            foreach ($database['ken'] as $ken) {
-                $use[$ken] = $this->files[$ken];
-            }
-
-            // テキストファイルの書き出し
-            $lines = array();
-            add_ken($use, $this->db, sprintf('u%s%s', $this->nen, $database['clc']), $database['clname'], $lines);
-
-            // エクセルの作成
-            $filename = $store_dir . sprintf('/【地区オプション】%s昨年度設定一覧.xlsx', $database['clname']);
-            createExcel($filename, $lines);
+            // ファイル作成とログの書き出しを任せる
+            $create_excel_data = new createExcelData($this->db, $database['clc'], $database['clname'], $this->getChikuSettings($database['clc']), $database['ken']);
+            $create_excel_data->createExcelFiles();
 
             // 作成したファイルのログ
             $this->pushCreateFileLog($database);
-
-            echo sprintf('[%s] %s作成終了' . PHP_EOL, date('Y-m-d H:i:s'), $database['clname']);
         }
     }
 
@@ -231,41 +227,74 @@ class createLastYearSettings
     private function pushCreateFileLog($database)
     {
         $file_name = __DIR__ . '../../data/create_file_log';
-        $fh = fopen($file_name, "w");
-        fwrite($fh, sprintf("u%s%s\t%s\t%s\n", $this->nen, $database['clc'], $database['clname'], date('Y-m-d H:i:s')));
+        $fh = fopen($file_name, "wa");
+        fwrite($fh, sprintf("u%s%s\t%s\t%s\n", self::C_YEAR, $database['clc'], $database['clname'], date('Y-m-d H:i:s')));
         fclose($fh);
     }
 
     private function cleanUpZipData()
     {
-        foreach (glob(__DIR__."/../data/*.CSV") as $filename){
-            unlink( realpath($filename));
+        foreach (glob(__DIR__ . "/../data/*.CSV") as $filename) {
+            unlink(realpath($filename));
+        }
+    }
+
+    /**
+     * データベース内の地区設定を返します
+     * @param string $clc
+     * @return array
+     */
+    private function getChikuSettings($clc)
+    {
+        // データベースに接続
+        $this->db->query(sprintf("USE u%s%s", self::C_YEAR, $clc));
+        $sth = $this->db->query("SELECT yubincd,chikucd,chikuname FROM `chiku` LEFT JOIN `chiku_mast` USING (`chikucd`)");
+        $rtn = [];
+        while ($str = $sth->fetch(PDO::FETCH_ASSOC)) {
+            $rtn[$str['yubincd']] = ['chikucd' => $str['chikucd'], 'chikuname' => $str['chikuname']];
+        }
+        return $rtn;
+    }
+
+    private function initLogFile()
+    {
+
+        $this->log_file_name = __DIR__ . '/../data/create_file_log';
+        // ファイルがある場合は確認してからクリア
+        if (file_exists($this->log_file_name)){
+            echo("既存のログファイルを削除してもよいですか?(y/N)");
+            while (1) {
+                $input = fgets(STDIN, 10);
+                $input = rtrim($input, "\n");
+                if ($input === 'y') {
+                    unlink($this->log_file_name);
+                    echo "ログファイルを削除して、処理を継続します。\n";
+                    break;
+                } else {
+                    echo "ログファイルをそのままで処理を継続します。\n";
+                    break;
+                }
+            }
         }
     }
 }
 
 // arg解析
-$options = getopt('p:');
+$options = getopt('h');
 
-if (empty($options)
-    || !count(
-        $options
-    ) || (isset($options['p']) && $options['p']) === false
+if (isset($options['h'])
 ) {
     print('===============================================================' . "\n");
-    print('  Leopalace21CopySettings 使用方法について' . "\n\n");
+    print('  createLastYearSettings 使用方法について' . "\n\n");
     print('1. コマンドラインオプション一覧' . "\n");
-    print("\t" . '-p ：onoのパスワード。' . "\n");
+    print("\t" . '-h このヘルプの表示' . "\n");
+    print('2. 動作内容' . "\n");
+    print("\t" . '昨年度の地区設定を参照し、今現在の郵便番号データを作成します。' . "\n");
     print('===============================================================' . "\n");
     exit;
 }
 
-if (empty($options['p'])) {
-    echo "処理を中止します。\n";
-    exit;
-}
-
-$create_last_year_settings = new createLastYearSettings($options);
+$create_last_year_settings = new createLastYearSettings();
 
 //// csvファイルの削除
 //foreach ($csv_files as $csv) {
