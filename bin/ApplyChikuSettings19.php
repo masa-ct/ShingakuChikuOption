@@ -45,6 +45,12 @@ EOT;
     private $sth_insert_chiku;
     /** @var  PDOStatement $sth_count */
     private $sth_count;
+    /** @var  PDOStatement $sth_get_chikucds */
+    private $sth_get_chikucds;
+    /** @var  PDOStatement $sth_joken_mast */
+    private $sth_joken_mast;
+    /** @var  PDOStatement $sth_joken_param */
+    private $sth_joken_param;
 
     /**
      * apply_chiku_settings constructor.
@@ -390,6 +396,7 @@ EOT;
         $this->sth_select_chiku_mast = $this->_db->prepare('SELECT `chikuname` FROM `chiku_mast` WHERE `chikucd` = ?');
         $this->sth_update_chiku_mast = $this->_db->prepare('UPDATE `chiku_mast` SET `chikuname` = ? WHERE `chikucd` = ?');
         $this->sth_insert_chiku_mast = $this->_db->prepare('INSERT INTO `chiku_mast`(`chikucd`,`chikuname`,`created_at`) VALUES(?,?,NOW())');
+        $this->sth_get_chikucds = $this->_db->prepare('SELECT `chikucd` FROM `chiku_mast`');
 
         // chiku
         $this->sth_update_chiku = $this->_db->prepare('UPDATE `chiku` SET `chikucd` = ? WHERE `yubincd` = ?');
@@ -397,6 +404,10 @@ EOT;
 
         // count
         $this->sth_count = $this->_db->prepare('SELECT ROW_COUNT()');
+
+        // joken
+        $this->sth_joken_mast = $this->_db->prepare('SELECT `jokenname` FROM `joken_mast` WHERE `jokencd` = ?');
+        $this->sth_joken_param = $this->_db->prepare('SELECT `jokencd`,`joken_value` FROM `joken_param` WHERE `joken_item` = ?');
     }
 
     public function run()
@@ -404,7 +415,7 @@ EOT;
         // サーバーへの接続
         try {
             // パスワードの入力
-            fwrite(STDERR, 'サーバーのパスワードを入力してください: ');
+            fwrite(STDERR, 'サーバー「' . static::C_HOST . '」のパスワードを入力してください: ');
             if (strncasecmp(PHP_OS, 'WIN', 3) === 0) {
                 // WindowsではエコーバックをOFFにできない
                 @flock(STDIN, LOCK_EX);
@@ -472,6 +483,10 @@ EOT;
 
         // 地区の更新
         $this->updateChiku();
+
+        // 条件に設定されている地区コードでマスターにないものをチェックする
+        $this->checkJokenUsingChikuSettings();
+
     }
 
     private function isChikuOption()
@@ -532,6 +547,86 @@ EOT;
         }
 
         return false;
+    }
+
+    /**
+     * chiku_mastに存在しないコードが条件に使用されていないかをチェックする
+     *
+     */
+    private function checkJokenUsingChikuSettings()
+    {
+        // chiku_mastの設定を取得する(コードのみ)
+        $chiku_codes = $this->getChikuCodes();
+
+        // joken_paramからjokencdをキーに、条件名と、joken_valueを配列にして値として取得する
+        $joken_settings = $this->getJokenSettings();
+
+        // 上で取得した配列でjoken_valueの配列からchiku_mastの設定にあるものを消す
+        foreach ($joken_settings as $jokencd => $joken_setting) {
+            if ($result = array_diff($joken_setting['chiku'], $chiku_codes)) {
+                $joken_settings[$jokencd]['chiku'] = $result;
+            } else {
+                unset($joken_settings[$jokencd]);
+            }
+        }
+
+        // joken_valueの値が残っているものについてテキストファイルに書き出す
+        if ($joken_settings) {
+            $file_path = __DIR__ . '/../data/条件確認必要.txt';
+            $fh = fopen($file_path, "w");
+            foreach ($joken_settings as $jokencd => $joken_setting) {
+                fwrite(
+                    $fh,
+                    sprintf(
+                        "条件コード=%sの「%s」に地区マスタにないコード「%s」が含まれています。\n",
+                        $jokencd,
+                        $joken_setting['jokenname'],
+                        implode(',', $joken_setting['chiku'])
+                    )
+                );
+            }
+            fclose($fh);
+
+            // 通知
+            echo "条件で地区マスタにないコードが使用されています。\n";
+        }
+    }
+
+    /**
+     * @return array
+     */
+    private function getChikuCodes()
+    {
+        $this->sth_get_chikucds->execute();
+        return array_column($this->sth_get_chikucds->fetchAll(), 'chikucd');
+    }
+
+    /**
+     * @return array
+     */
+    private function getJokenSettings()
+    {
+        $rtn = [];
+
+        // jokencdをキーにして、地区コードを取得
+        $this->sth_joken_param->execute(['chiku[]']);
+        while ($str = $this->sth_joken_param->fetch(PDO::FETCH_ASSOC)) {
+            $rtn[$str['jokencd']]['chiku'][] = $str['joken_value'];
+        }
+        $this->sth_joken_param->closeCursor();
+
+        // 条件名を取得
+        foreach ($rtn as $jokencd => $values) {
+            // 条件を検索
+            $this->sth_joken_mast->execute([$jokencd]);
+            if ($str = $this->sth_joken_mast->fetch(PDO::FETCH_ASSOC)) {
+                $rtn[$jokencd]['jokenname'] = $str['jokenname'];
+            } else {
+                unset($rtn[$jokencd]);      // joken_mastに該当のないときはunset
+            }
+        }
+
+        return $rtn;
     }
 
 }
