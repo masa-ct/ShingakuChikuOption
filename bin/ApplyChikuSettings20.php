@@ -169,7 +169,7 @@ EOT;
                         if ($cell) {
                             if ($this->_line_settings[$index] === 'chikucd') {
                                 // 地区コードに数値以外のもの(関数)が設定されているときは例外を投げる
-                                if (!is_numeric($cell->getValue())) {
+                                if ($cell->getValue() && !is_numeric($cell->getValue())) {
                                     var_dump($row);
                                     throw new Exception('地区コードに数値以外(おそらく数式)が設定されています。');
                                 }
