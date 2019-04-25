@@ -20,7 +20,7 @@ class CreateInitialZipData
     const C_HOST = 'tokushima';
     const C_PORT = '3306';
     const C_USER = 'selector';
-    const C_ADMINDB = '19uadmin';
+    const C_ADMINDB = '20uadmin';
 
     /**
      * @var array

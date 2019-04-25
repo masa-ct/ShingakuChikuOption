@@ -8,11 +8,11 @@ date_default_timezone_set('Asia/Tokyo');
  * Date: 2017/05/01
  * Time: 16:39
  */
-class ApplyChikuSettings19
+class ApplyChikuSettings20
 {
     const C_HOST = 'tokushima';
     const C_USER = 'tap';
-    const C_NEN = 19;
+    const C_NEN = 20;
 
     const SQL_CLNAME = <<<EOT
 SELECT clname,clc FROM client WHERE nickname=?
@@ -167,9 +167,16 @@ EOT;
                     }
                     if (in_array($index, array_keys($this->_line_settings))) {
                         if ($cell) {
-                            $cells[$this->_line_settings[$index]] = $this->_line_settings[$index] == 'chikucd'
-                                ? (int)$cell->getValue()
-                                : (string)$cell->getValue();
+                            if ($this->_line_settings[$index] === 'chikucd') {
+                                // 地区コードに数値以外のもの(関数)が設定されているときは例外を投げる
+                                if (!is_numeric($cell->getValue())) {
+                                    var_dump($row);
+                                    throw new Exception('地区コードに数値以外(おそらく数式)が設定されています。');
+                                }
+                                $cells[$this->_line_settings[$index]] = (int)$cell->getValue();
+                            } else {
+                                $cells[$this->_line_settings[$index]] = (string)$cell->getValue();
+                            }
                         }
                     }
                 }
@@ -434,7 +441,7 @@ EOT;
             $this->_db = new PDO($dsn, self::C_USER, $pass);
             $this->_db->setAttribute(PDO::ATTR_ERRMODE, PDO::ERRMODE_EXCEPTION);
             $this->_db->setAttribute(PDO::ATTR_DEFAULT_FETCH_MODE, PDO::FETCH_ASSOC);
-            echo "接続成功\n";
+            echo "[" . date('y-m-d H:i:s') . "] 接続成功\n";
         } catch (Exception $e) {
             echo $e->getMessage() . PHP_EOL;
             exit;
@@ -449,7 +456,7 @@ EOT;
         // データベースに接続
         try {
             $this->_db->query(sprintf('USE u%s%s', self::C_NEN, $this->_clc));
-            echo "データベースへの接続成功。\n";
+            echo "[" . date('y-m-d H:i:s') . "] データベースへの接続成功。\n";
         } catch (Exception $e) {
             echo $e->getMessage() . PHP_EOL;
         }
@@ -458,14 +465,28 @@ EOT;
         $this->setSQL();
 
         // エクセルファイルの項目を取得
-        if (!$this->setHeaderInfo()) {
-            echo "エクセルファイルに必要なシート、カラムがありません。\n";
+        try {
+            if ($this->setHeaderInfo()) {
+                echo "[" . date('y-m-d H:i:s') . "] エクセルファイルの項目確認成功。\n";
+            }
+        } catch (PHPExcel_Reader_Exception $e) {
+            echo $e->getMessage()."\n";
             exit;
         }
 
         // エクセルファイルの内容を取得
-        if (!$this->getExcelContents()) {
-            echo "エクセルファイルの内容取り込みに失敗しました。\n";
+        try {
+            if ($this->getExcelContents()) {
+                echo "[" . date('y-m-d H:i:s') . "] エクセルファイルの内容取り込み成功。\n";
+            }
+        } catch (PHPExcel_Reader_Exception $e) {
+            echo $e->getMessage()."\n";
+            exit;
+        } catch (PHPExcel_Exception $e) {
+            echo $e->getMessage()."\n";
+            exit;
+        } catch (Exception $e){
+            echo $e->getMessage()."\n";
             exit;
         }
 
@@ -541,9 +562,13 @@ EOT;
                 if (count(array_filter($cells)) == 3) {
                     $this->_line_settings = $cells;
                     return true;
+                } else {
+                    throw new PHPExcel_Reader_Exception("シート「郵便番号データ」に必要なカラムがありません。\n");
                 }
                 break;
             }
+        } else {
+            throw new PHPExcel_Reader_Exception("エクセルファイルに必要なシート「郵便番号データ」がありません。\n");
         }
 
         return false;
@@ -631,5 +656,5 @@ EOT;
 
 }
 
-$apply_chiku_settings = new ApplyChikuSettings19();
+$apply_chiku_settings = new ApplyChikuSettings20();
 $apply_chiku_settings->run();
