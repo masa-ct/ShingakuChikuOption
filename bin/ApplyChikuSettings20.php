@@ -103,7 +103,7 @@ EOT;
             $this->_file_path = $file_path;
             return true;
         } else {
-            echo sprintf("指定されたファイル「」が存在しません。\n", $this->_file_name);
+            echo sprintf("指定されたファイル「%s」が存在しません。\n", $this->_file_name);
         }
         return false;
     }
@@ -470,7 +470,7 @@ EOT;
                 echo "[" . date('y-m-d H:i:s') . "] エクセルファイルの項目確認成功。\n";
             }
         } catch (PHPExcel_Reader_Exception $e) {
-            echo $e->getMessage()."\n";
+            echo $e->getMessage() . "\n";
             exit;
         }
 
@@ -480,13 +480,13 @@ EOT;
                 echo "[" . date('y-m-d H:i:s') . "] エクセルファイルの内容取り込み成功。\n";
             }
         } catch (PHPExcel_Reader_Exception $e) {
-            echo $e->getMessage()."\n";
+            echo $e->getMessage() . "\n";
             exit;
         } catch (PHPExcel_Exception $e) {
-            echo $e->getMessage()."\n";
+            echo $e->getMessage() . "\n";
             exit;
-        } catch (Exception $e){
-            echo $e->getMessage()."\n";
+        } catch (Exception $e) {
+            echo $e->getMessage() . "\n";
             exit;
         }
 
@@ -507,6 +507,21 @@ EOT;
 
         // 条件に設定されている地区コードでマスターにないものをチェックする
         $this->checkJokenUsingChikuSettings();
+
+        // ファイルの削除
+        echo(sprintf('「%s」を削除しますか?(y/N)', $this->_file_name));
+        while (true) {
+            $input = fgets(STDIN, 10);
+            $input = rtrim($input, "\n");
+            if ($input === 'y') {
+                unlink($this->_file_path);
+                echo "ファイルを削除しました。\n";
+                return true;
+            } else {
+                echo "ファイルはそのまま残します。\n";
+                return false;
+            }
+        }
 
     }
 
