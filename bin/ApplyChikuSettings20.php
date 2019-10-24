@@ -10,7 +10,7 @@ date_default_timezone_set('Asia/Tokyo');
  */
 class ApplyChikuSettings20
 {
-    const C_HOST = 'tokushima';
+    const C_HOST = '172.19.53.170';
     const C_USER = 'tap';
     const C_NEN = 20;
 
