@@ -17,7 +17,7 @@ class CreateInitialZipData
      */
     private $clientname;
 
-    const C_HOST = 'tokushima';
+    const C_HOST = '172.19.53.170';
     const C_PORT = '3306';
     const C_USER = 'selector';
     const C_ADMINDB = '20uadmin';
