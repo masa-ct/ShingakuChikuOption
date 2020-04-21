@@ -30,10 +30,10 @@ if (!$opts
  */
 class CreateZipDataIncludeCurrentSettings
 {
-    const C_SERVER = 'tokushima';
+    const C_SERVER = 'iyo';
     const C_ADMINBASE = 'uadmin';
     const C_USER = 'selector';
-    const C_NEN = 19;
+    const C_NEN = 20;
 
     private $_nickname;
     /** @var  PDO */
