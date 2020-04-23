@@ -13,11 +13,11 @@ error_reporting(E_ALL);
  */
 class createLastYearSettings
 {
-    const C_SERVER = 'tokushima';
+    const C_SERVER = 'iyo';
     const C_PORT = 3306;
     const C_ADMINBASE = 'uadmin';
     const C_USER = 'selector';
-    const C_YEAR = '19';    // 参照する年度
+    const C_YEAR = '20';    // 参照する年度
 
     private $files;
     private $db;
